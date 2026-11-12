@@ -1,32 +1,73 @@
 "use client";
-import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { ArrowLeftRight, LogOut, Plus } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/useAuth";
+import { BRAND, UNIVERSITY } from "@/lib/config";
+import Avatar from "./Avatar";
+
+const LINKS = [
+  { href: "/", label: "Explore" },
+  { href: "/offers", label: "Offers" },
+  { href: "/storage", label: "Storage & collection" },
+  { href: "/me", label: "My listings" },
+];
 
 export default function NavBar() {
-  const [email, setEmail] = useState<string | null>(null);
+  const { user, profile, loading } = useAuth();
+  const path = usePathname();
+  const router = useRouter();
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) =>
-      setEmail(session?.user?.email ?? null)
-    );
-    return () => sub.subscription.unsubscribe();
-  }, []);
+  async function signOut() {
+    await supabase.auth.signOut();
+    router.push("/");
+  }
 
   return (
-    <nav>
-      <Link href="/"><strong>Uni Marketplace</strong></Link>
-      <span className="spacer" />
-      {email ? (
-        <>
-          <Link href="/items/new">Sell / trade</Link>
-          <Link href="/offers">Offers</Link>
-          <button onClick={() => supabase.auth.signOut()}>Sign out</button>
-        </>
-      ) : (
-        <Link href="/login">Sign in</Link>
-      )}
-    </nav>
+    <header className="nav">
+      <div className="nav-inner">
+        <Link href="/" className="brand">
+          <span className="brand-mark">
+            <ArrowLeftRight size={18} strokeWidth={2.4} />
+          </span>
+          <span>
+            <strong>{BRAND}</strong>
+            <small>{UNIVERSITY.name}</small>
+          </span>
+        </Link>
+
+        {user && (
+          <nav className="nav-links">
+            {LINKS.map((l) => (
+              <Link key={l.href} href={l.href} className={path === l.href ? "active" : ""}>
+                {l.label}
+              </Link>
+            ))}
+          </nav>
+        )}
+
+        <div className="nav-right">
+          {!loading && user && (
+            <>
+              <Link href="/items/new" className="btn btn-primary">
+                <Plus size={16} /> Sell or swap
+              </Link>
+              <Link href="/me" className="nav-user" title={user.email ?? ""}>
+                <Avatar name={profile?.display_name ?? user.email} size={34} />
+              </Link>
+              <button className="icon-btn" onClick={signOut} title="Sign out" aria-label="Sign out">
+                <LogOut size={18} />
+              </button>
+            </>
+          )}
+          {!loading && !user && (
+            <Link href="/login" className="btn btn-primary">
+              Sign in
+            </Link>
+          )}
+        </div>
+      </div>
+    </header>
   );
 }

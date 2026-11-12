@@ -1,36 +1,51 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { supabase, pounds } from "@/lib/supabase";
+import Link from "next/link";
+import { ArrowLeftRight, CalendarDays, MapPin, MessageSquare } from "lucide-react";
+import ItemImage from "@/components/ItemImage";
+import { pounds, supabase, timeAgo } from "@/lib/supabase";
+import { useAuth } from "@/lib/useAuth";
 
+type MiniItem = { id: string; title: string; category: string; photo_url: string | null; owner_id?: string };
 type Offer = {
   id: string;
   offerer_id: string;
   cash_pence: number;
   message: string | null;
-  status: string;
-  wanted: { title: string; owner_id: string } | null;
-  offered: { title: string } | null;
+  status: "pending" | "accepted" | "declined" | "withdrawn";
+  meetup_spot: string | null;
+  meetup_when: string | null;
+  created_at: string;
+  wanted: MiniItem | null;
+  offered: MiniItem | null;
+  offerer: { display_name: string | null } | null;
 };
 
+const STATUS: Record<Offer["status"], string> = { pending: "amber", accepted: "green", declined: "red", withdrawn: "grey" };
+
 export default function Offers() {
-  const router = useRouter();
-  const [userId, setUserId] = useState<string | null>(null);
-  const [offers, setOffers] = useState<Offer[]>([]);
+  const { user } = useAuth(true);
+  const [offers, setOffers] = useState<Offer[] | null>(null);
+  const [tab, setTab] = useState<"in" | "out">("in");
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
-    const { data: u } = await supabase.auth.getUser();
-    if (!u.user) return router.push("/login");
-    setUserId(u.user.id);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("trade_offers")
-      .select("id, offerer_id, cash_pence, message, status, wanted:items!wanted_item_id(title, owner_id), offered:items!offered_item_id(title)")
+      .select(
+        "id, offerer_id, cash_pence, message, status, meetup_spot, meetup_when, created_at, " +
+          "wanted:items!wanted_item_id(id, title, category, photo_url, owner_id), " +
+          "offered:items!offered_item_id(id, title, category, photo_url), " +
+          "offerer:profiles!offerer_id(display_name)"
+      )
       .order("created_at", { ascending: false });
+    if (error) setError(error.message);
     setOffers((data as unknown as Offer[]) ?? []);
-  }, [router]);
+  }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (user) load();
+  }, [user, load]);
 
   async function respond(id: string, action: "accept" | "decline" | "withdraw") {
     setError("");
@@ -42,44 +57,74 @@ export default function Offers() {
     load();
   }
 
-  const incoming = offers.filter((o) => o.wanted?.owner_id === userId);
-  const outgoing = offers.filter((o) => o.offerer_id === userId);
-
-  const describe = (o: Offer) =>
-    [o.offered?.title, o.cash_pence ? `${pounds(o.cash_pence)} cash` : null].filter(Boolean).join(" + ");
+  const incoming = (offers ?? []).filter((o) => o.wanted?.owner_id === user?.id);
+  const outgoing = (offers ?? []).filter((o) => o.offerer_id === user?.id);
+  const list = tab === "in" ? incoming : outgoing;
 
   return (
     <>
-      <h1>Offers</h1>
-      {error && <p className="error">{error}</p>}
+      <div className="page-head">
+        <div>
+          <h1>Offers</h1>
+          <p>Swaps and buy requests for your items, and the offers you've made.</p>
+        </div>
+      </div>
+      <div className="tabs" style={{ maxWidth: 420 }}>
+        <button className={tab === "in" ? "on" : ""} onClick={() => setTab("in")}>Received ({incoming.length})</button>
+        <button className={tab === "out" ? "on" : ""} onClick={() => setTab("out")}>Sent ({outgoing.length})</button>
+      </div>
+      {error && <p className="error" style={{ marginBottom: 12 }}>{error}</p>}
 
-      <h2>Received</h2>
-      {incoming.length === 0 && <p className="muted">None yet.</p>}
-      {incoming.map((o) => (
-        <div key={o.id} className="card">
-          <strong>{describe(o)}</strong> for your {o.wanted?.title}
-          {o.message && <p className="muted">"{o.message}"</p>}
-          <p className="muted">Status: {o.status}</p>
-          {o.status === "pending" && (
-            <div className="row">
-              <button onClick={() => respond(o.id, "accept")}>Accept</button>
-              <button className="secondary" onClick={() => respond(o.id, "decline")}>Decline</button>
+      {offers && list.length === 0 && (
+        <div className="panel empty">
+          <h3>No offers yet</h3>
+          <p>{tab === "in" ? "When someone offers on your listings, it shows up here." : "Find something you like and make an offer."}</p>
+          <p style={{ marginTop: 16 }}><Link href="/" className="btn btn-ghost">Explore listings</Link></p>
+        </div>
+      )}
+
+      <div className="list">
+        {list.map((o) => (
+          <div key={o.id} className="panel offer">
+            {o.offered ? (
+              <div className="mini"><ItemImage category={o.offered.category} photoUrl={o.offered.photo_url} alt={o.offered.title} iconSize={28} /></div>
+            ) : (
+              <div className="mini cash">{pounds(o.cash_pence)}</div>
+            )}
+            <ArrowLeftRight className="swap-ic" size={22} />
+            <Link href={`/items/${o.wanted?.id}`} className="mini">
+              {o.wanted && <ItemImage category={o.wanted.category} photoUrl={o.wanted.photo_url} alt={o.wanted.title} iconSize={28} />}
+            </Link>
+            <div style={{ minWidth: 0 }}>
+              <h3>
+                {[o.offered?.title, o.cash_pence ? `${pounds(o.cash_pence)} cash` : null].filter(Boolean).join(" + ")}
+                <span className="muted" style={{ fontWeight: 500 }}> for </span>
+                {tab === "in" ? "your " : ""}{o.wanted?.title}
+              </h3>
+              <span className={`badge ${STATUS[o.status]}`}>{o.status}</span>
+              <span className="muted small" style={{ marginLeft: 8 }}>
+                {tab === "in" ? `From ${o.offerer?.display_name ?? "a student"} · ` : ""}{timeAgo(o.created_at)}
+              </span>
+              <div className="meta-list">
+                {o.meetup_spot && <span><MapPin size={13} /> {o.meetup_spot}</span>}
+                {o.meetup_when && <span><CalendarDays size={13} /> {o.meetup_when}</span>}
+                {o.message && <span><MessageSquare size={13} /> “{o.message}”</span>}
+              </div>
             </div>
-          )}
-        </div>
-      ))}
-
-      <h2>Sent</h2>
-      {outgoing.length === 0 && <p className="muted">None yet.</p>}
-      {outgoing.map((o) => (
-        <div key={o.id} className="card">
-          <strong>{describe(o)}</strong> for {o.wanted?.title}
-          <p className="muted">Status: {o.status}</p>
-          {o.status === "pending" && (
-            <button className="secondary" onClick={() => respond(o.id, "withdraw")}>Withdraw</button>
-          )}
-        </div>
-      ))}
+            <div className="row">
+              {o.status === "pending" && tab === "in" && (
+                <>
+                  <button className="btn btn-primary" onClick={() => respond(o.id, "accept")}>Accept</button>
+                  <button className="btn btn-ghost" onClick={() => respond(o.id, "decline")}>Decline</button>
+                </>
+              )}
+              {o.status === "pending" && tab === "out" && (
+                <button className="btn btn-ghost" onClick={() => respond(o.id, "withdraw")}>Withdraw</button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </>
   );
 }
