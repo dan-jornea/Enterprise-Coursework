@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { Banknote, CalendarDays, CircleCheck, Info, Package, Pencil, Truck, Warehouse, X } from "lucide-react";
-import { COLLECTION_PRICING, LOCATIONS } from "@/lib/config";
+import { Banknote, CalendarDays, CircleCheck, Info, Package, PackageCheck, Pencil, Truck, Warehouse, X } from "lucide-react";
+import { COLLECTION_PRICING, LOCATIONS, STORAGE_BOX } from "@/lib/config";
 import { pounds, supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/useAuth";
 
@@ -14,12 +14,15 @@ type Request = {
   item_condition: string | null;
   collection_date: string | null;
   collection_time: string | null;
+  return_date: string | null;
   location: string | null;
   estimate_pence: number | null;
   status: string;
 };
 
 const ITEM_STATES = ["All working", "Some need a small fix", "Some don't work"];
+const BOX_SIZE = `${STORAGE_BOX.widthCm} × ${STORAGE_BOX.depthCm} × ${STORAGE_BOX.heightCm} cm`;
+const EMPTY_FORM = { description: "", boxes: 1, large: 0, condition: ITEM_STATES[0], date: "", time: "", returnDate: "", location: LOCATIONS[0] };
 
 function dateInputValue(date: Date) {
   const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
@@ -30,10 +33,18 @@ function timeInputValue(date: Date) {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
+// The day after a YYYY-MM-DD date, or "" while there is no usable date yet.
+function dayAfter(isoDate: string) {
+  const next = new Date(`${isoDate}T12:00:00`);
+  if (Number.isNaN(next.getTime())) return "";
+  next.setDate(next.getDate() + 1);
+  return dateInputValue(next);
+}
+
 export default function Storage() {
   const { user } = useAuth(true);
   const [mode, setMode] = useState<"sell" | "store">("sell");
-  const [f, setF] = useState({ description: "", boxes: 1, large: 0, condition: ITEM_STATES[0], date: "", time: "", location: LOCATIONS[0] });
+  const [f, setF] = useState(EMPTY_FORM);
   const [minimumCollection, setMinimumCollection] = useState({ date: "", time: "" });
   const [requests, setRequests] = useState<Request[]>([]);
   const [busy, setBusy] = useState(false);
@@ -65,7 +76,24 @@ export default function Storage() {
   }, []);
   useEffect(() => { if (user) load(); }, [user, load]);
 
+  // The return date needs supabase/003_storage_return_date.sql. Until that has been run on the
+  // database, this stays false and the page works exactly as it did before, without the field.
+  const [hasReturnDate, setHasReturnDate] = useState(false);
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    supabase.from("collection_requests").select("return_date").limit(1).then(({ error }) => {
+      if (active) setHasReturnDate(!error);
+    });
+    return () => {
+      active = false;
+    };
+  }, [user]);
+  const asksReturnDate = hasReturnDate && mode === "store";
+
   const storeCost = f.boxes * COLLECTION_PRICING.storePerBoxPence + f.large * COLLECTION_PRICING.storePerLargeItemPence;
+  // Stored items can come back the day after collection at the earliest.
+  const minimumReturn = dayAfter(f.date || minimumCollection.date);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -74,6 +102,9 @@ export default function Storage() {
     if (f.date && f.date < dateInputValue(new Date())) return setError("Collection date cannot be in the past.");
     if (f.date && f.time && new Date(`${f.date}T${f.time}`).getTime() <= Date.now()) {
       return setError("Collection date and time must be in the future.");
+    }
+    if (asksReturnDate && f.returnDate && f.returnDate <= (f.date || dateInputValue(new Date()))) {
+      return setError(f.date ? "Return date must be after the collection date." : "Return date must be in the future.");
     }
     if (f.boxes + f.large === 0) return setError("Add at least one box or large item.");
     setBusy(true);
@@ -85,6 +116,7 @@ export default function Storage() {
       item_condition: mode === "sell" ? f.condition : null,
       collection_date: f.date || null,
       collection_time: f.time || null,
+      ...(hasReturnDate && { return_date: mode === "store" ? f.returnDate || null : null }),
       location: f.location,
       estimate_pence: mode === "store" ? storeCost : null,
     };
@@ -95,7 +127,7 @@ export default function Storage() {
     if (result.error) return setError(result.error.message);
     setDone(editingId ? "Request updated." : "Request saved. We'll confirm a time before your move-out date.");
     setEditingId(null);
-    setF({ description: "", boxes: 1, large: 0, condition: ITEM_STATES[0], date: "", time: "", location: LOCATIONS[0] });
+    setF(EMPTY_FORM);
     await load();
   }
 
@@ -109,6 +141,7 @@ export default function Storage() {
       condition: request.item_condition ?? ITEM_STATES[0],
       date: request.collection_date ?? "",
       time: request.collection_time?.slice(0, 5) ?? "",
+      returnDate: request.return_date ?? "",
       location: request.location ?? LOCATIONS[0],
     });
     setDone("");
@@ -117,7 +150,7 @@ export default function Storage() {
 
   function stopEditing() {
     setEditingId(null);
-    setF({ description: "", boxes: 1, large: 0, condition: ITEM_STATES[0], date: "", time: "", location: LOCATIONS[0] });
+    setF(EMPTY_FORM);
     setDone("");
     setError("");
   }
@@ -184,14 +217,14 @@ export default function Storage() {
           </label>
           <div className="two">
             <label className="field">
-              <span>Boxes</span>
+              <span>Boxes <span className="hint">({BOX_SIZE} each)</span></span>
               <input className="input" type="number" min={0} max={20} value={f.boxes} onChange={(e) => set("boxes", Math.max(0, Number(e.target.value) || 0))} />
-              <span className="hint">46 cm × 46 cm × 46 cm, perfect for large items up to 25 kg.</span>
+              <span className="hint">One box is {BOX_SIZE}. Good for books, kitchenware, bedding and clothes.</span>
             </label>
             <label className="field">
-              <span>Large items</span>
+              <span>Large items <span className="hint">(bigger than one box)</span></span>
               <input className="input" type="number" min={0} max={10} value={f.large} onChange={(e) => set("large", Math.max(0, Number(e.target.value) || 0))} />
-              <span className="hint">Bulky belongings that cannot fit into a standard storage box.</span>
+              <span className="hint">Anything that doesn't fit inside a {BOX_SIZE} box counts as a large item: a bike, desk chair or mini fridge, for example.</span>
             </label>
           </div>
           {mode === "sell" && (
@@ -204,7 +237,7 @@ export default function Storage() {
               </div>
             </div>
           )}
-          <div className="three">
+          <div className={asksReturnDate ? "two" : "three"}>
             <label className="field">
               <span>Collection date</span>
               <input className="input" type="date" min={minimumCollection.date} value={f.date} onChange={(e) => set("date", e.target.value)} />
@@ -219,6 +252,13 @@ export default function Storage() {
                 {LOCATIONS.map((l) => <option key={l}>{l}</option>)}
               </select>
             </label>
+            {asksReturnDate && (
+              <label className="field">
+                <span>Return date</span>
+                <input className="input" type="date" min={minimumReturn} value={f.returnDate} onChange={(e) => set("returnDate", e.target.value)} />
+                <span className="hint">When we bring your things back. Leave it empty if you don't know yet.</span>
+              </label>
+            )}
           </div>
           <button className="btn btn-primary btn-lg" type="submit" disabled={busy}>
             <Truck size={18} /> {busy ? "Saving…" : editingId ? "Save changes" : "Request collection"}
@@ -278,6 +318,9 @@ export default function Storage() {
                     <b>{r.mode === "sell" ? "Sell to partner" : "Summer storage"}</b>
                     <p className="muted small truncate">{r.items_description}</p>
                     <p className="muted small"><CalendarDays size={12} style={{ verticalAlign: -1 }} /> {r.collection_date ?? "Date to confirm"} · {r.collection_time?.slice(0, 5) ?? "Time to confirm"} · {r.location}</p>
+                    {hasReturnDate && r.mode === "store" && (
+                      <p className="muted small"><PackageCheck size={12} style={{ verticalAlign: -1 }} /> Return: {r.return_date ?? "date to confirm"}</p>
+                    )}
                   </div>
                   <span className="badge amber">{r.status}</span>
                   <div className="stack" style={{ gap: 6 }}>

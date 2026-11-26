@@ -65,6 +65,10 @@ export const COLLECTION_PRICING = {
   storePerLargeItemPence: 2500,
 };
 
+// The standard box used for collections. PLACEHOLDER size for the demo.
+// Anything that doesn't fit inside one counts as a large item.
+export const STORAGE_BOX = { widthCm: 46, depthCm: 46, heightCm: 46 };
+
 export function nextDays(n: number) {
   const out: string[] = [];
   const d = new Date();

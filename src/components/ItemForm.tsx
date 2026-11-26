@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Camera, Clock, ImagePlus, Info, PoundSterling, Tag, X } from "lucide-react";
 import ItemCard from "@/components/ItemCard";
 import { CATEGORIES, CONDITIONS, LOCATIONS, TIME_WINDOWS, type CategoryId, type ConditionId } from "@/lib/config";
+import { reputationOf, useReputations } from "@/lib/reputation";
 import { supabase, toPence, type Item } from "@/lib/supabase";
 import { useAuth } from "@/lib/useAuth";
 
@@ -31,6 +32,7 @@ export default function ItemForm({ itemId }: { itemId?: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }));
+  const reputations = useReputations([user?.id]);
 
   useEffect(() => {
     if (!itemId || !user) return;
@@ -277,7 +279,7 @@ export default function ItemForm({ itemId }: { itemId?: string }) {
         <aside className="sticky stack">
           <div className="panel stack">
             <h3>Preview</h3>
-            <ItemCard item={previewItem} preview />
+            <ItemCard item={previewItem} preview reputation={reputationOf(reputations, user?.id)} />
             <button className="btn btn-primary btn-lg btn-block" type="submit" disabled={busy}>
               {busy ? (itemId ? "Saving…" : "Publishing…") : itemId ? "Save changes" : "Publish listing"}
             </button>

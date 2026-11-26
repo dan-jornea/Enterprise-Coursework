@@ -16,6 +16,7 @@
   --red-soft: #fdeaea;
   --amber: #a16207;
   --amber-soft: #fff4dc;
+  --star: #f5a524;
   --r: 16px;
   --r-sm: 10px;
   --shadow: 0 1px 2px rgba(15, 26, 58, 0.04), 0 8px 24px rgba(15, 26, 58, 0.07);
@@ -94,6 +95,27 @@ img { display: block; }
 
 .avatar { display: inline-grid; place-items: center; border-radius: 50%; font-weight: 700; flex: none; }
 .verified-icon { color: var(--blue); flex: none; }
+
+/* ---------- Ratings ---------- */
+.rating-chip { display: inline-flex; align-items: center; gap: 3px; font-size: 12.5px; color: var(--muted); white-space: nowrap; flex: none; vertical-align: -2px; }
+.rating-chip svg { color: var(--star); flex: none; }
+.rating-chip b { color: var(--ink); font-weight: 700; }
+.rating-chip.new svg { color: var(--faint); }
+.seller-line .rating-chip { margin-left: auto; }
+.rating-summary { display: flex; align-items: center; gap: 10px; flex: none; }
+.rating-summary svg { color: var(--faint); flex: none; }
+.rating-summary svg.on { color: var(--star); }
+.rating-summary b { display: block; font-size: 15.5px; font-weight: 750; line-height: 1.25; white-space: nowrap; }
+.rating-summary span { display: block; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.star-meter { position: relative; display: inline-flex; line-height: 0; width: max-content; align-self: flex-start; }
+.star-meter > span { display: inline-flex; gap: 2px; }
+.star-meter svg { flex: none; }
+.star-meter-off { color: #dde2ee; }
+.star-meter-on { position: absolute; left: 0; top: 0; overflow: hidden; color: var(--star); }
+.stat-grid { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1.3fr; gap: 10px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+.stat { display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 12px 14px; border-radius: 12px; background: var(--bg); min-height: 68px; }
+.stat b { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; }
+.stat > span { font-size: 13px; color: var(--muted); }
 
 /* ---------- Cards / panels ---------- */
 .panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 24px; }

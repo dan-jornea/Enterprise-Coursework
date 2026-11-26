@@ -2,9 +2,20 @@
 import { useEffect, useState } from "react";
 import { BadgeCheck } from "lucide-react";
 import Avatar from "@/components/Avatar";
+import { RatingSummary, StarMeter } from "@/components/Rating";
 import { ALLOWED_DOMAINS, UNIVERSITY, YEARS } from "@/lib/config";
+import type { Reputation } from "@/lib/reputation";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/useAuth";
+
+// The signed-in student's own figures, from my_reputation() in supabase/004_ratings.sql.
+type Figures = {
+  rating: number | null;
+  trades_count: number;
+  sales_count: number;
+  purchases_count: number;
+  reports_count: number;
+};
 
 export default function Account() {
   const { user, profile, loading } = useAuth(true);
@@ -35,6 +46,26 @@ export default function Account() {
     }
   }, [profile]);
   useEffect(() => { if (user?.email) setEmail(user.email); }, [user]);
+
+  const [figures, setFigures] = useState<Figures | null>(null);
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    supabase.rpc("my_reputation").single().then(({ data, error }) => {
+      if (!active) return;
+      const row = data as Figures | null;
+      // Stays hidden if ratings aren't set up on this database.
+      setFigures(error || !row ? null : { ...row, rating: row.rating == null ? null : Number(row.rating) });
+    });
+    return () => {
+      active = false;
+    };
+  }, [user]);
+  const standing: Reputation | null = figures && {
+    rating: figures.rating,
+    trades: figures.trades_count,
+    sales: figures.sales_count,
+  };
 
   async function savePersonal(e: React.FormEvent) {
     e.preventDefault();
@@ -106,16 +137,38 @@ export default function Account() {
   const displayYear = savedPersonal ? savedPersonal.year : profile?.year;
   return (
     <>
-      <section className="panel seller-card" style={{ marginBottom: 24 }}>
-        <Avatar name={displayName} size={64} />
-        <div style={{ flex: 1 }}>
-          <h1 className="row" style={{ fontSize: 24 }}>
-            {displayName}
-            <span className="badge"><BadgeCheck size={13} /> Verified student</span>
-          </h1>
-          <p className="muted">{[displayYear, displayCourse, UNIVERSITY.name].filter(Boolean).join(" · ")}</p>
-          <p className="muted small">{user.email}</p>
+      <section className="panel" style={{ marginBottom: 24 }}>
+        <div className="seller-card">
+          <Avatar name={displayName} size={64} />
+          <div style={{ flex: 1 }}>
+            <h1 className="row" style={{ fontSize: 24 }}>
+              {displayName}
+              <span className="badge"><BadgeCheck size={13} /> Verified student</span>
+            </h1>
+            <p className="muted">{[displayYear, displayCourse, UNIVERSITY.name].filter(Boolean).join(" · ")}</p>
+            <p className="muted small">{user.email}</p>
+          </div>
+          <RatingSummary reputation={standing} />
         </div>
+        {figures && (
+          <>
+            <div className="stat-grid">
+              <div className="stat">
+                <StarMeter rating={figures.rating} size={20} />
+                <span>{figures.rating == null ? "No rating yet" : `${figures.rating.toFixed(1)} out of 5`}</span>
+              </div>
+              <div className="stat"><b>{figures.sales_count}</b><span>Sold</span></div>
+              <div className="stat"><b>{figures.purchases_count}</b><span>Bought or swapped</span></div>
+              <div className="stat">
+                <b>{figures.reports_count}</b>
+                <span>{figures.reports_count === 1 ? "Report" : "Reports"} against your listings</span>
+              </div>
+            </div>
+            <p className="muted small" style={{ marginTop: 12 }}>
+              Your rating is worked out automatically. It goes up with every completed trade and down when other students report your listings.
+            </p>
+          </>
+        )}
       </section>
 
       <section className="panel stack" style={{ marginBottom: 24 }}>

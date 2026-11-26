@@ -7,7 +7,9 @@ import {
 } from "lucide-react";
 import Avatar from "@/components/Avatar";
 import ItemImage from "@/components/ItemImage";
+import { RatingSummary } from "@/components/Rating";
 import { SAFE_SPOTS, TIME_WINDOWS, UNIVERSITY, categoryLabel, conditionLabel } from "@/lib/config";
+import { reputationOf, useReputations } from "@/lib/reputation";
 import { ITEM_SELECT, pounds, savePct, supabase, timeAgo, toPence, type Item } from "@/lib/supabase";
 import { useAuth } from "@/lib/useAuth";
 
@@ -31,6 +33,8 @@ export default function ItemPage() {
     supabase.from("items").select("*").eq("owner_id", user.id).eq("status", "available").neq("id", id)
       .then(({ data }) => setMine((data as Item[]) ?? []));
   }, [id, user]);
+
+  const reputations = useReputations([item?.owner_id]);
 
   if (item === undefined) return null;
   if (item === null)
@@ -77,9 +81,10 @@ export default function ItemPage() {
                 </h3>
                 <p className="muted small">
                   {[item.seller?.year, item.seller?.course].filter(Boolean).join(" · ") || UNIVERSITY.name}
+                  {" · "}Listed {timeAgo(item.created_at)}
                 </p>
               </div>
-              <span className="muted small">Listed {timeAgo(item.created_at)}</span>
+              <RatingSummary reputation={reputationOf(reputations, item.owner_id)} />
             </div>
           </section>
         </div>

@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeftRight, CalendarDays, MapPin, MessageSquare } from "lucide-react";
 import ItemImage from "@/components/ItemImage";
+import { RatingChip } from "@/components/Rating";
+import { reputationOf, useReputations } from "@/lib/reputation";
 import { pounds, supabase, timeAgo } from "@/lib/supabase";
 import { useAuth } from "@/lib/useAuth";
 
@@ -61,6 +63,8 @@ export default function Offers() {
   const incoming = (offers ?? []).filter((o) => o.wanted?.owner_id === user?.id && o.status !== "withdrawn");
   const outgoing = (offers ?? []).filter((o) => o.offerer_id === user?.id && o.status !== "withdrawn");
   const list = tab === "in" ? incoming : tab === "out" ? outgoing : withdrawn;
+  // Reloaded together with the offers, because accepting one changes both students' ratings.
+  const reputations = useReputations((offers ?? []).map((o) => o.offerer_id), offers);
 
   return (
     <>
@@ -107,7 +111,14 @@ export default function Offers() {
                 </h3>
                 <span className={`badge ${STATUS[o.status]}`}>{o.status}</span>
                 <span className="muted small" style={{ marginLeft: 8 }}>
-                  {isReceived ? `From ${o.offerer?.display_name ?? "a student"} · ` : ""}{timeAgo(o.created_at)}
+                  {isReceived && (
+                    <>
+                      From {o.offerer?.display_name ?? "a student"}{" "}
+                      <RatingChip reputation={reputationOf(reputations, o.offerer_id)} />
+                      {" · "}
+                    </>
+                  )}
+                  {timeAgo(o.created_at)}
                 </span>
                 <div className="meta-list">
                   {o.meetup_spot && <span><MapPin size={13} /> {o.meetup_spot}</span>}

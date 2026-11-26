@@ -4,8 +4,9 @@ import Link from "next/link";
 import { ArrowRight, MapPin, Search } from "lucide-react";
 import ItemCard from "@/components/ItemCard";
 import { CATEGORIES, LOCATIONS } from "@/lib/config";
+import { reputationOf, useReputations } from "@/lib/reputation";
 import { ITEM_SELECT, supabase, type Item } from "@/lib/supabase";
-import { SAMPLE_ITEMS } from "@/lib/sample";
+import { SAMPLE_ITEMS, SAMPLE_REPUTATIONS } from "@/lib/sample";
 import { useAuth } from "@/lib/useAuth";
 
 type SortOrder = "newest" | "price-low" | "price-high";
@@ -78,6 +79,8 @@ export default function Home() {
       });
   }, [items, search, category, location, minPrice, maxPrice, sort]);
 
+  const reputations = useReputations((items ?? []).map((item) => item.owner_id));
+
   if (loading) return null;
 
   if (!user) {
@@ -93,7 +96,7 @@ export default function Home() {
             </Link>
           </div>
           <div className="hero-cards">
-            {SAMPLE_ITEMS.map((item) => <ItemCard key={item.id} item={item} preview />)}
+            {SAMPLE_ITEMS.map((item) => <ItemCard key={item.id} item={item} preview reputation={SAMPLE_REPUTATIONS[item.id]} />)}
           </div>
         </section>
         <section className="features">
@@ -208,7 +211,7 @@ export default function Home() {
       )}
       {!error && visibleItems.length > 0 && (
         <div className="grid">
-          {visibleItems.map((item) => <ItemCard key={item.id} item={item} />)}
+          {visibleItems.map((item) => <ItemCard key={item.id} item={item} reputation={reputationOf(reputations, item.owner_id)} />)}
         </div>
       )}
     </>

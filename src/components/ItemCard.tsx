@@ -2,10 +2,20 @@ import Link from "next/link";
 import { ArrowLeftRight, BadgeCheck, MapPin } from "lucide-react";
 import ItemImage from "./ItemImage";
 import Avatar from "./Avatar";
+import { RatingChip } from "./Rating";
 import { conditionLabel } from "@/lib/config";
+import type { Reputation } from "@/lib/reputation";
 import { pounds, savePct, type Item } from "@/lib/supabase";
 
-export default function ItemCard({ item, preview = false }: { item: Item; preview?: boolean }) {
+export default function ItemCard({
+  item,
+  preview = false,
+  reputation = null,
+}: {
+  item: Item;
+  preview?: boolean;
+  reputation?: Reputation | null;
+}) {
   const save = savePct(item);
   const body = (
     <>
@@ -39,6 +49,7 @@ export default function ItemCard({ item, preview = false }: { item: Item; previe
             {item.seller?.course ? ` · ${item.seller.course}` : ""}
           </span>
           <BadgeCheck size={14} className="verified-icon" />
+          <RatingChip reputation={reputation} />
         </p>
       </div>
     </>
