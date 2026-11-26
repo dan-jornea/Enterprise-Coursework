@@ -1,206 +1,216 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, BadgeCheck, Lock, PiggyBank, Recycle, Search, ShieldCheck, Truck } from "lucide-react";
+import { ArrowRight, MapPin, Search } from "lucide-react";
 import ItemCard from "@/components/ItemCard";
-import { CATEGORIES, LOCATIONS, UNIVERSITY, categoryLabel } from "@/lib/config";
-import { SAMPLE_ITEMS } from "@/lib/sample";
+import { CATEGORIES, LOCATIONS } from "@/lib/config";
 import { ITEM_SELECT, supabase, type Item } from "@/lib/supabase";
+import { SAMPLE_ITEMS } from "@/lib/sample";
 import { useAuth } from "@/lib/useAuth";
+
+type SortOrder = "newest" | "price-low" | "price-high";
 
 export default function Home() {
   const { user, loading } = useAuth();
-  if (loading) return null;
-  return user ? <Feed /> : <Landing />;
-}
-
-function Landing() {
-  return (
-    <>
-      <section className="hero">
-        <div>
-          <span className="badge">
-            <BadgeCheck size={14} /> Verified {UNIVERSITY.name} students only
-          </span>
-          <h1>
-            Buy, sell and <em>swap</em> with students on your campus.
-          </h1>
-          <p className="lead">
-            Pick up what you need for less, pass on what you don't, and hand over in person at safe spots on
-            campus. When you move out, we'll collect what you can't take home.
-          </p>
-          <div className="row">
-            <Link href="/login" className="btn btn-primary btn-lg">
-              Join with your university email <ArrowRight size={18} />
-            </Link>
-          </div>
-        </div>
-        <div className="hero-cards">
-          {SAMPLE_ITEMS.map((i) => (
-            <ItemCard key={i.id} item={i} preview />
-          ))}
-        </div>
-      </section>
-
-      <section className="features">
-        <div className="panel feature">
-          <div className="ic"><PiggyBank size={22} /></div>
-          <h3>Spend less, get money back</h3>
-          <p>Buy second-hand from other students, then sell or swap things on when you're done with them.</p>
-        </div>
-        <div className="panel feature">
-          <div className="ic"><Lock size={22} /></div>
-          <h3>Students only</h3>
-          <p>Every account needs a confirmed @{UNIVERSITY.domain} email. Meet at public spots on campus and report anything that looks wrong.</p>
-        </div>
-        <div className="panel feature">
-          <div className="ic"><Recycle size={22} /></div>
-          <h3>Less waste at move-out</h3>
-          <p>Leaving in June? Sell items to our collection partner or store them over summer instead of binning them.</p>
-        </div>
-      </section>
-
-      <section className="cta-band">
-        <Truck size={34} />
-        <div>
-          <h2>End-of-year storage and collection</h2>
-          <p>We collect what you can't carry home, then store it for you or pass it on to new students in September.</p>
-        </div>
-        <span className="spacer" />
-        <Link href="/login" className="btn btn-ghost">Sign in to book</Link>
-      </section>
-    </>
-  );
-}
-
-const SORTS = [
-  { id: "new", label: "Newest first" },
-  { id: "low", label: "Price: low to high" },
-  { id: "high", label: "Price: high to low" },
-];
-
-function Feed() {
   const [items, setItems] = useState<Item[] | null>(null);
-  const [q, setQ] = useState("");
-  const [cat, setCat] = useState("");
-  const [loc, setLoc] = useState("");
-  const [swapOnly, setSwapOnly] = useState(false);
-  const [sort, setSort] = useState("new");
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("all");
+  const [location, setLocation] = useState("all");
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [sort, setSort] = useState<SortOrder>("newest");
 
   useEffect(() => {
-    supabase
-      .from("items")
-      .select(ITEM_SELECT)
-      .eq("status", "available")
-      .order("created_at", { ascending: false })
-      .limit(200)
-      .then(({ data }) => setItems((data as unknown as Item[]) ?? []));
-  }, []);
+    let active = true;
 
-  const shown = useMemo(() => {
-    if (!items) return [];
-    const needle = q.trim().toLowerCase();
-    const list = items.filter(
-      (i) =>
-        (!cat || i.category === cat) &&
-        (!loc || i.location === loc) &&
-        (!swapOnly || i.open_to_trade) &&
-        (!needle ||
-          [i.title, i.description, categoryLabel(i.category), i.location]
-            .filter(Boolean)
-            .join(" ")
-            .toLowerCase()
-            .includes(needle))
+    async function loadItems() {
+      setItems(null);
+      setError("");
+      const { data, error } = await supabase
+        .from("items")
+        .select(ITEM_SELECT)
+        .eq("status", "available")
+        .order("created_at", { ascending: false });
+
+      if (!active) return;
+      if (error) {
+        setError(error.message);
+        setItems([]);
+        return;
+      }
+      setItems((data as unknown as Item[]) ?? []);
+    }
+
+    if (user) void loadItems();
+    else setItems([]);
+
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
+  const visibleItems = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const minValue = Number(minPrice);
+    const maxValue = Number(maxPrice);
+    const minPence = minPrice.trim() !== "" && Number.isFinite(minValue) && minValue >= 0
+      ? Math.round(minValue * 100)
+      : null;
+    const maxPence = maxPrice.trim() !== "" && Number.isFinite(maxValue) && maxValue >= 0
+      ? Math.round(maxValue * 100)
+      : null;
+    return (items ?? [])
+      .filter((item) => category === "all" || item.category === category)
+      .filter((item) => location === "all" || item.location === location)
+      .filter((item) => {
+        if (minPence === null && maxPence === null) return true;
+        if (item.price_pence === null) return false;
+        if (minPence !== null && item.price_pence < minPence) return false;
+        if (maxPence !== null && item.price_pence > maxPence) return false;
+        return true;
+      })
+      .filter((item) => !query || `${item.title} ${item.description ?? ""}`.toLowerCase().includes(query))
+      .sort((a, b) => {
+        if (sort === "price-low") return (a.price_pence ?? Infinity) - (b.price_pence ?? Infinity);
+        if (sort === "price-high") return (b.price_pence ?? -Infinity) - (a.price_pence ?? -Infinity);
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+  }, [items, search, category, location, minPrice, maxPrice, sort]);
+
+  if (loading) return null;
+
+  if (!user) {
+    return (
+      <>
+        <section className="hero">
+          <div>
+            <span className="badge">The student marketplace for Bath</span>
+            <h1>Good finds.<br /><em>Better swaps.</em></h1>
+            <p className="lead">Buy, sell and swap the things you need with verified University of Bath students.</p>
+            <Link href="/login" className="btn btn-primary btn-lg">
+              Join the campus marketplace <ArrowRight size={17} />
+            </Link>
+          </div>
+          <div className="hero-cards">
+            {SAMPLE_ITEMS.map((item) => <ItemCard key={item.id} item={item} preview />)}
+          </div>
+        </section>
+        <section className="features">
+          <div className="panel feature"><h3>Made for campus</h3><p>Find useful things nearby and arrange handovers around campus.</p></div>
+          <div className="panel feature"><h3>Buy or swap</h3><p>Make an offer with cash, one of your items, or both.</p></div>
+          <div className="panel feature"><h3>Student community</h3><p>Listings are shared within the verified university community.</p></div>
+        </section>
+      </>
     );
-    if (sort === "new") return list;
-    const price = (i: Item) => i.price_pence ?? Number.POSITIVE_INFINITY;
-    return [...list].sort((a, b) =>
-      sort === "low" ? price(a) - price(b) : (b.price_pence ?? -1) - (a.price_pence ?? -1)
-    );
-  }, [items, q, cat, loc, swapOnly, sort]);
+  }
 
   return (
     <>
       <div className="page-head">
         <div>
-          <h1>Explore the marketplace</h1>
-          <p>Everything here is listed by verified {UNIVERSITY.name} students.</p>
+          <h1>Explore listings</h1>
+          <p>Buy, sell and swap with University of Bath students.</p>
         </div>
-        <span className="badge green">
-          <ShieldCheck size={14} /> 100% @{UNIVERSITY.domain}
-        </span>
+        <Link href="/items/new" className="btn btn-primary">List an item <ArrowRight size={16} /></Link>
       </div>
 
-      <div className="search">
-        <Search size={20} />
-        <input
-          placeholder="Search bikes, textbooks, kitchen sets, mini fridges…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-      </div>
+      <label className="search">
+        <Search size={19} />
+        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search items..." aria-label="Search items" />
+      </label>
 
       <div className="filters">
         <div className="filter-row">
           <span className="filter-label">Category</span>
           <div className="chips">
-            <button className={`chip ${cat === "" ? "on" : ""}`} onClick={() => setCat("")}>All</button>
-            {CATEGORIES.map((c) => (
-              <button key={c.id} className={`chip ${cat === c.id ? "on" : ""}`} onClick={() => setCat(cat === c.id ? "" : c.id)}>
-                {c.label}
+            <button type="button" className={`chip ${category === "all" ? "on" : ""}`} onClick={() => setCategory("all")}>All items</button>
+            {CATEGORIES.map((entry) => (
+              <button type="button" key={entry.id} className={`chip ${category === entry.id ? "on" : ""}`} onClick={() => setCategory(entry.id)}>
+                {entry.label}
               </button>
             ))}
           </div>
         </div>
         <div className="filter-row">
-          <span className="filter-label">Near</span>
-          <div className="chips">
-            <button className={`chip soft ${loc === "" ? "on" : ""}`} onClick={() => setLoc("")}>Anywhere</button>
-            {LOCATIONS.map((l) => (
-              <button key={l} className={`chip soft ${loc === l ? "on" : ""}`} onClick={() => setLoc(loc === l ? "" : l)}>
-                {l}
+          <span className="filter-label">Location</span>
+          <label className="row" style={{ maxWidth: 320, flex: 1 }}>
+            <MapPin size={16} className="muted" />
+            <select className="input" value={location} onChange={(event) => setLocation(event.target.value)} aria-label="Filter by location">
+              <option value="all">All locations</option>
+              {LOCATIONS.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="filter-row">
+          <span className="filter-label">Price</span>
+          <div className="row">
+            <label className="row" style={{ gap: 6 }}>
+              <span className="small muted">Minimum</span>
+              <div className="input-prefix" style={{ width: 110 }}>
+                <b>£</b>
+                <input
+                  className="input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={minPrice}
+                  onChange={(event) => setMinPrice(event.target.value)}
+                  placeholder="0"
+                  aria-label="Minimum price"
+                />
+              </div>
+            </label>
+            <span className="muted">–</span>
+            <label className="row" style={{ gap: 6 }}>
+              <span className="small muted">Maximum</span>
+              <div className="input-prefix" style={{ width: 110 }}>
+                <b>£</b>
+                <input
+                  className="input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={maxPrice}
+                  onChange={(event) => setMaxPrice(event.target.value)}
+                  placeholder="Any"
+                  aria-label="Maximum price"
+                />
+              </div>
+            </label>
+            {(minPrice !== "" || maxPrice !== "") && (
+              <button type="button" className="link-btn" onClick={() => { setMinPrice(""); setMaxPrice(""); }}>
+                Clear
               </button>
-            ))}
+            )}
           </div>
         </div>
       </div>
 
-      <Link href="/storage" className="promo" style={{ color: "inherit" }}>
-        <span className="ic"><Truck size={22} /></span>
-        <div>
-          <h3>Leaving in June?</h3>
-          <p>Sell what you can't carry home to our collection partner, or store it over summer.</p>
-        </div>
-        <span className="spacer" />
-        <span className="btn btn-ghost">Storage & collection <ArrowRight size={16} /></span>
-      </Link>
-
       <div className="toolbar">
-        <h2>
-          Campus feed <span className="badge grey">{items ? shown.length : "…"}</span>
-        </h2>
-        <div className="row">
-          <label className="toggle">
-            <input type="checkbox" checked={swapOnly} onChange={(e) => setSwapOnly(e.target.checked)} /> Open to swap only
-          </label>
-          <select className="input" style={{ width: 200 }} value={sort} onChange={(e) => setSort(e.target.value)}>
-            {SORTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+        <h2>{items === null ? "Loading listings..." : `${visibleItems.length} listing${visibleItems.length === 1 ? "" : "s"}`}</h2>
+        <label className="row">
+          <span className="muted small">Sort by</span>
+          <select className="input" value={sort} onChange={(event) => setSort(event.target.value as SortOrder)} aria-label="Sort listings">
+            <option value="newest">Newest first</option>
+            <option value="price-low">Price: low to high</option>
+            <option value="price-high">Price: high to low</option>
           </select>
-        </div>
+        </label>
       </div>
 
-      {items && shown.length === 0 && (
+      {error && <div className="panel notice amber" role="alert"><span><b>Could not load listings.</b> {error}</span></div>}
+      {!error && items !== null && visibleItems.length === 0 && (
         <div className="panel empty">
-          <h3>{items.length === 0 ? "Nothing listed yet" : "No matches"}</h3>
-          <p>{items.length === 0 ? "Be the first to list something." : "Try another search or clear the filters."}</p>
-          <p style={{ marginTop: 16 }}>
-            <Link href="/items/new" className="btn btn-primary">List an item</Link>
-          </p>
+          <h3>No listings found</h3>
+          <p>{items.length === 0 ? "There are no available listings yet. Check back soon or add the first one." : "Try changing your search or filters."}</p>
         </div>
       )}
-      <div className="grid">
-        {shown.map((i) => <ItemCard key={i.id} item={i} />)}
-      </div>
+      {!error && visibleItems.length > 0 && (
+        <div className="grid">
+          {visibleItems.map((item) => <ItemCard key={item.id} item={item} />)}
+        </div>
+      )}
     </>
   );
 }

@@ -46,8 +46,9 @@ export const SAFE_SPOTS = [
 ];
 
 export const TIME_WINDOWS = [
-  { id: "afternoon", label: "Afternoon", time: "14:00 – 17:00" },
-  { id: "evening", label: "Evening", time: "17:00 – 20:00" },
+  { id: "morning", label: "Morning", time: "09:00 – 12:00" },
+  { id: "afternoon", label: "Afternoon", time: "12:00 – 18:00" },
+  { id: "evening", label: "Evening", time: "18:00 – 21:00" },
   { id: "flexible", label: "Flexible", time: "Between lectures" },
 ];
 export const windowLabel = (id: string | null) => {
