@@ -186,10 +186,12 @@ export default function Storage() {
             <label className="field">
               <span>Boxes</span>
               <input className="input" type="number" min={0} max={20} value={f.boxes} onChange={(e) => set("boxes", Math.max(0, Number(e.target.value) || 0))} />
+              <span className="hint">46 cm × 46 cm × 46 cm, perfect for large items up to 25 kg.</span>
             </label>
             <label className="field">
-              <span>Large items <span className="hint">(bike, chair, mini fridge)</span></span>
+              <span>Large items</span>
               <input className="input" type="number" min={0} max={10} value={f.large} onChange={(e) => set("large", Math.max(0, Number(e.target.value) || 0))} />
+              <span className="hint">Bulky belongings that cannot fit into a standard storage box.</span>
             </label>
           </div>
           {mode === "sell" && (
