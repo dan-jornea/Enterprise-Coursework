@@ -254,7 +254,7 @@ textarea.input { resize: vertical; }
 .offer { display: grid; grid-template-columns: 72px 28px 72px 1fr auto; gap: 16px; align-items: center; padding: 16px; }
 .mini { width: 72px; height: 72px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
 .mini.cash { display: grid; place-items: center; background: var(--green-soft); color: var(--green); font-weight: 800; font-size: 15px; }
-.offer .swap-ic { color: var(--faint); }
+.offer .offer-ic { color: var(--faint); }
 .offer h3 { font-size: 15.5px; margin-bottom: 4px; }
 .offer .meta-list { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--muted); font-size: 13px; margin-top: 6px; }
 .offer .meta-list span { display: inline-flex; align-items: center; gap: 5px; }

@@ -17,7 +17,6 @@ export type Item = {
   condition: ConditionId | null;
   price_pence: number | null;
   original_price_pence: number | null;
-  open_to_trade: boolean;
   status: "available" | "pending" | "traded";
   location: string | null;
   photo_url: string | null;

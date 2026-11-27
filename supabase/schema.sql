@@ -46,7 +46,7 @@ create table items (
   description text,
   category text not null check (category in ('bike','books','clothes','electronics','furniture','other')),
   condition text check (condition in ('new','good','fair','worn')),
-  price_pence int check (price_pence >= 0),      -- null = trade only
+  price_pence int check (price_pence >= 0),      -- price set by the seller
   open_to_trade boolean not null default true,
   status text not null default 'available' check (status in ('available','pending','traded')),
   created_at timestamptz not null default now()
@@ -64,7 +64,8 @@ create trigger items_set_university
   before insert on items
   for each row execute function set_item_university();
 
--- 4. Trade offers: swap one item for another, with an optional cash top-up.
+-- 4. Trade offers: a buyer offers an amount of money for a listing.
+--    offered_item_id is no longer used; 005_remove_swaps.sql blocks it and drops open_to_trade.
 create table trade_offers (
   id uuid primary key default gen_random_uuid(),
   wanted_item_id uuid not null references items(id) on delete cascade,

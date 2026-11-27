@@ -22,7 +22,6 @@ export default function ItemForm({ itemId }: { itemId?: string }) {
     condition: "good" as ConditionId,
     price: "",
     original: "",
-    open_to_trade: true,
     location: LOCATIONS[0],
     pickup_window: "afternoon",
   });
@@ -61,7 +60,6 @@ export default function ItemForm({ itemId }: { itemId?: string }) {
         condition: item.condition ?? "good",
         price: item.price_pence == null ? "" : (item.price_pence / 100).toFixed(2),
         original: item.original_price_pence == null ? "" : (item.original_price_pence / 100).toFixed(2),
-        open_to_trade: item.open_to_trade,
         location: item.location ?? LOCATIONS[0],
         pickup_window: item.pickup_window ?? "afternoon",
       });
@@ -96,7 +94,7 @@ export default function ItemForm({ itemId }: { itemId?: string }) {
     setError("");
     const price_pence = f.price.trim() === "" ? null : toPence(f.price);
     const original_price_pence = f.original.trim() === "" ? null : toPence(f.original);
-    if (price_pence === null && !f.open_to_trade) return setError("Set a price, allow swaps, or both.");
+    if (price_pence === null || price_pence <= 0) return setError("Set a selling price.");
 
     setBusy(true);
     let photo_url: string | null = existingPhotoUrl;
@@ -118,7 +116,6 @@ export default function ItemForm({ itemId }: { itemId?: string }) {
       condition: f.condition,
       price_pence,
       original_price_pence,
-      open_to_trade: f.open_to_trade,
       location: f.location,
       pickup_window: f.pickup_window,
       photo_url,
@@ -147,7 +144,6 @@ export default function ItemForm({ itemId }: { itemId?: string }) {
     condition: f.condition,
     price_pence: f.price.trim() === "" ? null : toPence(f.price),
     original_price_pence: f.original.trim() === "" ? null : toPence(f.original),
-    open_to_trade: f.open_to_trade,
     status: "available",
     location: f.location,
     photo_url: preview ?? existingPhotoUrl,
@@ -172,7 +168,7 @@ export default function ItemForm({ itemId }: { itemId?: string }) {
       <div className="page-head">
         <div>
           <h1>{itemId ? "Edit listing" : "List an item"}</h1>
-          <p>{itemId ? "Update the details of your listing." : "Sell it, swap it, or both. Only verified students at your university will see it."}</p>
+          <p>{itemId ? "Update the details of your listing." : "Sell it to another student. Only verified students at your university will see it."}</p>
         </div>
       </div>
 
@@ -258,21 +254,17 @@ export default function ItemForm({ itemId }: { itemId?: string }) {
           </section>
 
           <section className="panel stack">
-            <div className="section-label" style={{ marginBottom: 0 }}><PoundSterling size={18} /> Price and swaps</div>
+            <div className="section-label" style={{ marginBottom: 0 }}><PoundSterling size={18} /> Price</div>
             <div className="two">
               <label className="field">
-                <span>Selling price <span className="hint">(the amount you want to receive; leave empty for swap only)</span></span>
-                <div className="input-prefix"><b>£</b><input className="input" type="number" min="0" step="0.01" value={f.price} onChange={(e) => set("price", e.target.value)} placeholder="28" /></div>
+                <span>Selling price <span className="hint">(the amount you want to receive)</span></span>
+                <div className="input-prefix"><b>£</b><input className="input" type="number" min="0.01" step="0.01" value={f.price} onChange={(e) => set("price", e.target.value)} placeholder="28" required /></div>
               </label>
               <label className="field">
                 <span>Original retail price <span className="hint">(what the item cost when new; estimate if needed)</span></span>
                 <div className="input-prefix"><b>£</b><input className="input" type="number" min="0" step="0.01" value={f.original} onChange={(e) => set("original", e.target.value)} placeholder="95" /></div>
               </label>
             </div>
-            <label className="toggle">
-              <input type="checkbox" checked={f.open_to_trade} onChange={(e) => set("open_to_trade", e.target.checked)} />
-              Open to swaps. Other students can offer one of their items, with or without cash on top.
-            </label>
           </section>
         </div>
 

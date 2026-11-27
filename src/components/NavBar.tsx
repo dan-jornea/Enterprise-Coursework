@@ -51,7 +51,7 @@ export default function NavBar() {
           {!loading && user && (
             <>
               <Link href="/items/new" className="btn btn-primary">
-                <Plus size={16} /> Sell or swap
+                <Plus size={16} /> Sell an item
               </Link>
               <Link href="/account" className="nav-user" title={user.email ?? ""}>
                 <Avatar name={profile?.display_name ?? user.email} size={34} />

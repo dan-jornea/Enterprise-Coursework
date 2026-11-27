@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeftRight, CalendarDays, MapPin, MessageSquare } from "lucide-react";
+import { ArrowRight, CalendarDays, MapPin, MessageSquare } from "lucide-react";
 import ItemImage from "@/components/ItemImage";
 import { RatingChip } from "@/components/Rating";
 import { reputationOf, useReputations } from "@/lib/reputation";
@@ -19,7 +19,6 @@ type Offer = {
   meetup_when: string | null;
   created_at: string;
   wanted: MiniItem | null;
-  offered: MiniItem | null;
   offerer: { display_name: string | null } | null;
 };
 
@@ -37,7 +36,6 @@ export default function Offers() {
       .select(
         "id, offerer_id, cash_pence, message, status, meetup_spot, meetup_when, created_at, " +
           "wanted:items!wanted_item_id(id, title, category, photo_url, owner_id), " +
-          "offered:items!offered_item_id(id, title, category, photo_url), " +
           "offerer:profiles!offerer_id(display_name)"
       )
       .order("created_at", { ascending: false });
@@ -71,7 +69,7 @@ export default function Offers() {
       <div className="page-head">
         <div>
           <h1>Offers</h1>
-          <p>Swaps and buy requests for your items, and the offers you've made.</p>
+          <p>Buy requests for your items, and the offers you've made.</p>
         </div>
       </div>
       <div className="tabs" style={{ maxWidth: 620, gridTemplateColumns: "repeat(3, 1fr)" }}>
@@ -94,18 +92,14 @@ export default function Offers() {
           const isReceived = o.wanted?.owner_id === user?.id;
           return (
             <div key={o.id} className="panel offer">
-              {o.offered ? (
-                <div className="mini"><ItemImage category={o.offered.category} photoUrl={o.offered.photo_url} alt={o.offered.title} iconSize={28} /></div>
-              ) : (
-                <div className="mini cash">{pounds(o.cash_pence)}</div>
-              )}
-              <ArrowLeftRight className="swap-ic" size={22} />
+              <div className="mini cash">{pounds(o.cash_pence)}</div>
+              <ArrowRight className="offer-ic" size={22} />
               <Link href={`/items/${o.wanted?.id}`} className="mini">
                 {o.wanted && <ItemImage category={o.wanted.category} photoUrl={o.wanted.photo_url} alt={o.wanted.title} iconSize={28} />}
               </Link>
               <div style={{ minWidth: 0 }}>
                 <h3>
-                  {[o.offered?.title, o.cash_pence ? `${pounds(o.cash_pence)} cash` : null].filter(Boolean).join(" + ")}
+                  {pounds(o.cash_pence)}
                   <span className="muted" style={{ fontWeight: 500 }}> for </span>
                   {isReceived ? "your " : ""}{o.wanted?.title}
                 </h3>

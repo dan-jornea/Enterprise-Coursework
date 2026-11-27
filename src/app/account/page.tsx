@@ -158,7 +158,7 @@ export default function Account() {
                 <span>{figures.rating == null ? "No rating yet" : `${figures.rating.toFixed(1)} out of 5`}</span>
               </div>
               <div className="stat"><b>{figures.sales_count}</b><span>Sold</span></div>
-              <div className="stat"><b>{figures.purchases_count}</b><span>Bought or swapped</span></div>
+              <div className="stat"><b>{figures.purchases_count}</b><span>Bought</span></div>
               <div className="stat">
                 <b>{figures.reports_count}</b>
                 <span>{figures.reports_count === 1 ? "Report" : "Reports"} against your listings</span>

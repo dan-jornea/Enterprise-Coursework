@@ -5,7 +5,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: BRAND,
-  description: "Buy, sell and swap with verified students at your university.",
+  description: "Buy and sell with verified students at your university.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

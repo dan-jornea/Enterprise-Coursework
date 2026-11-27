@@ -89,8 +89,8 @@ export default function Home() {
         <section className="hero">
           <div>
             <span className="badge">The student marketplace for Bath</span>
-            <h1>Good finds.<br /><em>Better swaps.</em></h1>
-            <p className="lead">Buy, sell and swap the things you need with verified University of Bath students.</p>
+            <h1>Good finds.<br /><em>Better prices.</em></h1>
+            <p className="lead">Buy and sell the things you need with verified University of Bath students.</p>
             <Link href="/login" className="btn btn-primary btn-lg">
               Join the campus marketplace <ArrowRight size={17} />
             </Link>
@@ -101,7 +101,7 @@ export default function Home() {
         </section>
         <section className="features">
           <div className="panel feature"><h3>Made for campus</h3><p>Find useful things nearby and arrange handovers around campus.</p></div>
-          <div className="panel feature"><h3>Buy or swap</h3><p>Make an offer with cash, one of your items, or both.</p></div>
+          <div className="panel feature"><h3>Buy and sell</h3><p>List what you no longer need, or make an offer on something you want.</p></div>
           <div className="panel feature"><h3>Student community</h3><p>Listings are shared within the verified university community.</p></div>
         </section>
       </>
@@ -113,7 +113,7 @@ export default function Home() {
       <div className="page-head">
         <div>
           <h1>Explore listings</h1>
-          <p>Buy, sell and swap with University of Bath students.</p>
+          <p>Buy and sell with University of Bath students.</p>
         </div>
         <Link href="/items/new" className="btn btn-primary">List an item <ArrowRight size={16} /></Link>
       </div>

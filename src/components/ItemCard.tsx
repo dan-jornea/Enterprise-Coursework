@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeftRight, BadgeCheck, MapPin } from "lucide-react";
+import { BadgeCheck, MapPin } from "lucide-react";
 import ItemImage from "./ItemImage";
 import Avatar from "./Avatar";
 import { RatingChip } from "./Rating";
@@ -22,15 +22,10 @@ export default function ItemCard({
       <div className="thumb">
         <ItemImage category={item.category} photoUrl={item.photo_url} alt={item.title} />
         {item.condition && <span className="badge-float tl">{conditionLabel(item.condition)}</span>}
-        {item.open_to_trade && (
-          <span className="badge-float bl">
-            <ArrowLeftRight size={12} /> Open to swap
-          </span>
-        )}
       </div>
       <div className="card-body">
         <div className="price-row">
-          <span className="price">{item.price_pence != null ? pounds(item.price_pence) : "Swap only"}</span>
+          <span className="price">{item.price_pence != null ? pounds(item.price_pence) : "Make an offer"}</span>
           {item.original_price_pence != null && item.price_pence != null && save && (
             <span className="was">{pounds(item.original_price_pence)}</span>
           )}

@@ -21,20 +21,20 @@ const SELLERS = [
   { email: "demo.tom@bath.ac.uk", name: "Tom", course: "Management", year: "Final year" },
 ];
 
-// [seller index, title, category, condition, price £ or null, price new £ or null, open to swap, location, pickup, description]
+// [seller index, title, category, condition, price £, price new £ or null, location, pickup, description]
 const ITEMS = [
-  [0, "Compact fridge with freezer box", "kitchen", "new", 50, 140, true, "The Quads", "afternoon", "Moving out this week. Cleaned and defrosted, works perfectly. I can help carry it to the Quads reception."],
-  [1, "TI-84 Plus graphing calculator", "electronics", "good", 35, 110, true, "Eastwood", "flexible", "Used for first-year maths. Fresh batteries included."],
-  [2, "Organic chemistry course pack", "books", "fair", 20, 90, false, "Norwood House", "evening", "Textbook plus my annotated notes. Some highlighting."],
-  [3, "Dual monitor arm with desk clamp", "electronics", "good", 18, null, true, "Woodland Court", "afternoon", "Holds two 24-inch screens. All screws included."],
-  [3, "Air fryer, 4 litre", "kitchen", "good", 25, 80, true, "Polden Court", "evening", "Works great, basket is non-stick and clean."],
-  [4, "Acoustic guitar with padded bag", "other", "good", 45, 150, true, "Westwood", "flexible", "Full size, new strings last month. Happy to swap for a bike."],
-  [4, "Hybrid bike with D-lock", "bike", "good", 90, 320, true, "Westwood", "afternoon", "Medium frame, 21 gears. Serviced in September. Lock and lights included."],
-  [0, "Kitchen starter set: pans, cutlery, plates", "kitchen", "fair", 15, 60, true, "The Quads", "afternoon", "Two pans, cutlery for four, four plates and bowls. Everything you need for first year."],
-  [1, "Mesh desk chair", "furniture", "good", 28, 95, true, "Eastwood", "evening", "Adjustable height and arms. Fits under most desks."],
-  [2, "Single duvet and two pillows", "other", "new", 12, 40, false, "Norwood House", "flexible", "Washed and bagged. Used for one term."],
-  [3, "Winter coat, size M", "clothes", "good", null, 120, true, "Polden Court", "afternoon", "Warm puffer jacket. Swap only, looking for a desk lamp or kitchen stuff."],
-  [4, "Desk lamp with USB port", "furniture", "worn", 6, 25, true, "Off campus (Bath)", "evening", "Small scratch on the base, works fine."],
+  [0, "Compact fridge with freezer box", "kitchen", "new", 50, 140, "The Quads", "afternoon", "Moving out this week. Cleaned and defrosted, works perfectly. I can help carry it to the Quads reception."],
+  [1, "TI-84 Plus graphing calculator", "electronics", "good", 35, 110, "Eastwood", "flexible", "Used for first-year maths. Fresh batteries included."],
+  [2, "Organic chemistry course pack", "books", "fair", 20, 90, "Norwood House", "evening", "Textbook plus my annotated notes. Some highlighting."],
+  [3, "Dual monitor arm with desk clamp", "electronics", "good", 18, null, "Woodland Court", "afternoon", "Holds two 24-inch screens. All screws included."],
+  [3, "Air fryer, 4 litre", "kitchen", "good", 25, 80, "Polden Court", "evening", "Works great, basket is non-stick and clean."],
+  [4, "Acoustic guitar with padded bag", "other", "good", 45, 150, "Westwood", "flexible", "Full size, new strings last month."],
+  [4, "Hybrid bike with D-lock", "bike", "good", 90, 320, "Westwood", "afternoon", "Medium frame, 21 gears. Serviced in September. Lock and lights included."],
+  [0, "Kitchen starter set: pans, cutlery, plates", "kitchen", "fair", 15, 60, "The Quads", "afternoon", "Two pans, cutlery for four, four plates and bowls. Everything you need for first year."],
+  [1, "Mesh desk chair", "furniture", "good", 28, 95, "Eastwood", "evening", "Adjustable height and arms. Fits under most desks."],
+  [2, "Single duvet and two pillows", "other", "new", 12, 40, "Norwood House", "flexible", "Washed and bagged. Used for one term."],
+  [3, "Winter coat, size M", "clothes", "good", 30, 120, "Polden Court", "afternoon", "Warm puffer jacket, only worn for one winter."],
+  [4, "Desk lamp with USB port", "furniture", "worn", 6, 25, "Off campus (Bath)", "evening", "Small scratch on the base, works fine."],
 ];
 
 async function findOrCreate(s) {
@@ -57,14 +57,13 @@ for (const s of SELLERS) ids.push(await findOrCreate(s));
 console.log(`Demo sellers ready: ${ids.length}`);
 
 await admin.from("items").delete().in("owner_id", ids);
-const rows = ITEMS.map(([s, title, category, condition, price, orig, swap, location, pickup_window, description], i) => ({
+const rows = ITEMS.map(([s, title, category, condition, price, orig, location, pickup_window, description], i) => ({
   owner_id: ids[s],
   title,
   category,
   condition,
   price_pence: price == null ? null : price * 100,
   original_price_pence: orig == null ? null : orig * 100,
-  open_to_trade: swap,
   location,
   pickup_window,
   description,

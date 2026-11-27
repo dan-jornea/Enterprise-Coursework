@@ -64,7 +64,7 @@ export default function MyListings() {
             </Link>
             <div style={{ minWidth: 0 }}>
               <Link href={`/items/${item.id}`} style={{ color: "inherit" }}><h3 className="truncate">{item.title}</h3></Link>
-              <p className="muted small">{categoryLabel(item.category)} · {item.price_pence != null ? pounds(item.price_pence) : "Swap only"} · listed {timeAgo(item.created_at)}</p>
+              <p className="muted small">{categoryLabel(item.category)} · {item.price_pence != null ? pounds(item.price_pence) : "No price set"} · listed {timeAgo(item.created_at)}</p>
             </div>
             <span className={`badge ${STATUS[item.status]}`}>{item.status}</span>
             <div className="stack" style={{ gap: 6 }}>

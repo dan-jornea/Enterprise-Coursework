@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
-  ArrowLeft, ArrowLeftRight, BadgeCheck, CalendarDays, CircleCheck, Clock, Flag, Handshake, MapPin, PoundSterling, ShieldCheck,
+  ArrowLeft, BadgeCheck, CalendarDays, CircleCheck, Clock, Flag, Handshake, MapPin, PoundSterling, ShieldCheck,
 } from "lucide-react";
 import Avatar from "@/components/Avatar";
 import ItemImage from "@/components/ItemImage";
@@ -24,14 +24,11 @@ export default function ItemPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth(true);
   const [item, setItem] = useState<Item | null | undefined>(undefined);
-  const [mine, setMine] = useState<Item[]>([]);
 
   useEffect(() => {
     if (!user) return;
     supabase.from("items").select(ITEM_SELECT).eq("id", id).maybeSingle()
       .then(({ data }) => setItem((data as unknown as Item) ?? null));
-    supabase.from("items").select("*").eq("owner_id", user.id).eq("status", "available").neq("id", id)
-      .then(({ data }) => setMine((data as Item[]) ?? []));
   }, [id, user]);
 
   const reputations = useReputations([item?.owner_id]);
@@ -66,7 +63,6 @@ export default function ItemPage() {
             <div className="chips" style={{ marginBottom: 12 }}>
               <span className="badge grey">{categoryLabel(item.category)}</span>
               {item.condition && <span className="badge grey">{conditionLabel(item.condition)}</span>}
-              {item.open_to_trade && <span className="badge"><ArrowLeftRight size={12} /> Open to swap</span>}
             </div>
             <p className="quote" style={{ marginTop: 0 }}>{item.description || "No description given."}</p>
           </section>
@@ -92,7 +88,7 @@ export default function ItemPage() {
         <aside className="sticky stack">
           <section className="panel">
             <div className="price-row">
-              <span className="big-price">{item.price_pence != null ? pounds(item.price_pence) : "Swap only"}</span>
+              <span className="big-price">{item.price_pence != null ? pounds(item.price_pence) : "Make an offer"}</span>
               {save && item.original_price_pence && <span className="was">{pounds(item.original_price_pence)} new</span>}
               {save && <span className="save">Save {save}%</span>}
             </div>
@@ -116,9 +112,9 @@ export default function ItemPage() {
               <Link href="/me" className="btn btn-ghost btn-block">Go to my listings to edit</Link>
             </div>
           ) : item.status !== "available" ? (
-            <div className="panel notice amber"><Clock size={16} /><span>This item has already been traded.</span></div>
+            <div className="panel notice amber"><Clock size={16} /><span>This item has already been sold.</span></div>
           ) : (
-            <OfferPanel item={item} mine={mine} userId={user!.id} />
+            <OfferPanel item={item} userId={user!.id} />
           )}
 
           {!isOwner && <ReportPanel itemId={item.id} userId={user!.id} />}
@@ -128,11 +124,7 @@ export default function ItemPage() {
   );
 }
 
-function OfferPanel({ item, mine, userId }: { item: Item; mine: Item[]; userId: string }) {
-  const canSwap = item.open_to_trade;
-  const canBuy = item.price_pence != null;
-  const [mode, setMode] = useState<"swap" | "buy">(canSwap ? "swap" : "buy");
-  const [offeredId, setOfferedId] = useState("");
+function OfferPanel({ item, userId }: { item: Item; userId: string }) {
   const [cash, setCash] = useState("");
   const [spot, setSpot] = useState(SAFE_SPOTS[0].id);
   const [day, setDay] = useState("");
@@ -189,23 +181,21 @@ function OfferPanel({ item, mine, userId }: { item: Item; mine: Item[]; userId: 
     };
   }, [item.id, userId]);
 
-  const offered = mine.find((m) => m.id === offeredId);
   const cashPence = toPence(cash);
   const minimumOfferPence = item.price_pence == null ? 0 : Math.ceil(item.price_pence / 2);
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (mode === "buy" && cashPence < minimumOfferPence) {
+    if (cashPence <= 0) return setError("Enter how much you want to offer.");
+    if (cashPence < minimumOfferPence) {
       return setError(`Your offer must be at least ${pounds(minimumOfferPence)} (50% of the seller's price).`);
     }
-    if (mode === "swap" && !offeredId && cashPence === 0) return setError("Choose one of your items, add cash, or both.");
     if (!day || !time || new Date(`${day}T${time}`) < new Date()) return setError("Choose a day and time that is not in the past.");
     setBusy(true);
     const spotName = SAFE_SPOTS.find((s) => s.id === spot)?.name ?? null;
     const { error } = await supabase.from("trade_offers").insert({
       wanted_item_id: item.id,
-      offered_item_id: mode === "swap" ? offeredId || null : null,
       offerer_id: userId,
       cash_pence: cashPence,
       message: message.trim() || null,
@@ -247,54 +237,25 @@ function OfferPanel({ item, mine, userId }: { item: Item; mine: Item[]; userId: 
 
   return (
     <form className="panel" onSubmit={send}>
-      <h2 style={{ marginBottom: 14 }}>Make an offer</h2>
-      <div className="tabs">
-        <button type="button" className={mode === "swap" ? "on" : ""} disabled={!canSwap} onClick={() => setMode("swap")}>
-          <ArrowLeftRight size={15} /> Swap
-        </button>
-        <button type="button" className={mode === "buy" ? "on" : ""} disabled={!canBuy} onClick={() => setMode("buy")}>
-          <PoundSterling size={15} /> Buy
-        </button>
-      </div>
+      <h2 className="row" style={{ marginBottom: 14 }}><PoundSterling size={18} /> Make an offer</h2>
 
       <div className="stack">
-        {mode === "swap" && (
-          <>
-            <label className="field">
-              <span>Offer one of your items</span>
-              <select className="input" value={offeredId} onChange={(e) => setOfferedId(e.target.value)}>
-                <option value="">No item, cash only</option>
-                {mine.map((m) => <option key={m.id} value={m.id}>{m.title}</option>)}
-              </select>
-              {mine.length === 0 && (
-                <span className="hint">You have no available listings. <Link href="/items/new">List something</Link> to swap it.</span>
-              )}
-            </label>
-            <label className="field">
-              <span>Add cash on top <span className="hint">(optional, evens out the value)</span></span>
-              <div className="input-prefix"><b>£</b><input className="input" type="number" min="0" step="0.01" value={cash} onChange={(e) => setCash(e.target.value)} placeholder="0" /></div>
-            </label>
-          </>
-        )}
-
-        {mode === "buy" && (
-          <label className="field">
-            <span>Your cash offer <span className="hint">(minimum {pounds(minimumOfferPence)})</span></span>
-            <div className="input-prefix">
-              <b>£</b>
-              <input
-                className="input"
-                type="number"
-                min={minimumOfferPence / 100}
-                step="0.01"
-                value={cash}
-                onChange={(e) => setCash(e.target.value)}
-                placeholder={item.price_pence != null ? (item.price_pence / 100).toFixed(2) : undefined}
-                required
-              />
-            </div>
-          </label>
-        )}
+        <label className="field">
+          <span>Your offer {minimumOfferPence > 0 && <span className="hint">(minimum {pounds(minimumOfferPence)})</span>}</span>
+          <div className="input-prefix">
+            <b>£</b>
+            <input
+              className="input"
+              type="number"
+              min={Math.max(minimumOfferPence, 1) / 100}
+              step="0.01"
+              value={cash}
+              onChange={(e) => setCash(e.target.value)}
+              placeholder={item.price_pence != null ? (item.price_pence / 100).toFixed(2) : undefined}
+              required
+            />
+          </div>
+        </label>
 
         <div className="field">
           <span className="field-label"><ShieldCheck size={14} style={{ verticalAlign: -2, color: "var(--blue)" }} /> Safe exchange spot</span>
@@ -330,14 +291,14 @@ function OfferPanel({ item, mine, userId }: { item: Item; mine: Item[]; userId: 
         <div className="summary">
           <span className="muted">You offer</span>
           <b>
-            {[mode === "swap" ? offered?.title : null, cashPence ? pounds(cashPence) : null].filter(Boolean).join(" + ") || "Nothing yet"}
+            {cashPence ? pounds(cashPence) : "Nothing yet"}
           </b>
         </div>
         <button className="btn btn-primary btn-lg btn-block" type="submit" disabled={busy}>
-          {busy ? "Sending…" : mode === "swap" ? "Send swap offer" : "Request to buy"}
+          {busy ? "Sending…" : "Request to buy"}
         </button>
         {error && <p className="error">{error}</p>}
-        <p className="muted small" style={{ textAlign: "center" }}>No payment is taken online. You pay or swap in person at the hand-over.</p>
+        <p className="muted small" style={{ textAlign: "center" }}>No payment is taken online. You pay the seller in person at the hand-over.</p>
       </div>
     </form>
   );
