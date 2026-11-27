@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { Banknote, CalendarDays, CircleCheck, Info, Package, Truck, Warehouse } from "lucide-react";
-import { COLLECTION_PRICING, LOCATIONS } from "@/lib/config";
+import { Banknote, CalendarDays, CircleCheck, Info, Package, PackageCheck, Pencil, Truck, Warehouse, X } from "lucide-react";
+import { COLLECTION_PRICING, LOCATIONS, STORAGE_BOX } from "@/lib/config";
 import { pounds, supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/useAuth";
 
@@ -11,54 +11,165 @@ type Request = {
   items_description: string;
   boxes: number;
   large_items: number;
+  item_condition: string | null;
   collection_date: string | null;
+  collection_time: string | null;
+  return_date: string | null;
   location: string | null;
   estimate_pence: number | null;
   status: string;
 };
 
 const ITEM_STATES = ["All working", "Some need a small fix", "Some don't work"];
+const BOX_SIZE = `${STORAGE_BOX.widthCm} × ${STORAGE_BOX.depthCm} × ${STORAGE_BOX.heightCm} cm`;
+const EMPTY_FORM = { description: "", boxes: 1, large: 0, condition: ITEM_STATES[0], date: "", time: "", returnDate: "", location: LOCATIONS[0] };
+
+function dateInputValue(date: Date) {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 10);
+}
+
+function timeInputValue(date: Date) {
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+// The day after a YYYY-MM-DD date, or "" while there is no usable date yet.
+function dayAfter(isoDate: string) {
+  const next = new Date(`${isoDate}T12:00:00`);
+  if (Number.isNaN(next.getTime())) return "";
+  next.setDate(next.getDate() + 1);
+  return dateInputValue(next);
+}
 
 export default function Storage() {
   const { user } = useAuth(true);
   const [mode, setMode] = useState<"sell" | "store">("sell");
-  const [f, setF] = useState({ description: "", boxes: 1, large: 0, condition: ITEM_STATES[0], date: "", location: LOCATIONS[0] });
+  const [f, setF] = useState(EMPTY_FORM);
+  const [minimumCollection, setMinimumCollection] = useState({ date: "", time: "" });
   const [requests, setRequests] = useState<Request[]>([]);
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
+  const [done, setDone] = useState("");
   const [error, setError] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }));
 
+  useEffect(() => {
+    function updateMinimumCollection() {
+      const minimum = new Date();
+      minimum.setSeconds(0, 0);
+      minimum.setMinutes(minimum.getMinutes() + 1);
+      setMinimumCollection({ date: dateInputValue(minimum), time: timeInputValue(minimum) });
+    }
+
+    updateMinimumCollection();
+    const timer = window.setInterval(updateMinimumCollection, 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const load = useCallback(async () => {
-    const { data } = await supabase.from("collection_requests").select("*").order("created_at", { ascending: false });
+    const { data, error } = await supabase.from("collection_requests").select("*").order("created_at", { ascending: false });
+    if (error) {
+      setError(error.message);
+      return;
+    }
     setRequests((data as Request[]) ?? []);
   }, []);
   useEffect(() => { if (user) load(); }, [user, load]);
 
+  // The return date needs supabase/003_storage_return_date.sql. Until that has been run on the
+  // database, this stays false and the page works exactly as it did before, without the field.
+  const [hasReturnDate, setHasReturnDate] = useState(false);
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    supabase.from("collection_requests").select("return_date").limit(1).then(({ error }) => {
+      if (active) setHasReturnDate(!error);
+    });
+    return () => {
+      active = false;
+    };
+  }, [user]);
+  const asksReturnDate = hasReturnDate && mode === "store";
+
   const storeCost = f.boxes * COLLECTION_PRICING.storePerBoxPence + f.large * COLLECTION_PRICING.storePerLargeItemPence;
+  // Stored items can come back the day after collection at the earliest.
+  const minimumReturn = dayAfter(f.date || minimumCollection.date);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!user) return;
     setError("");
+    if (f.date && f.date < dateInputValue(new Date())) return setError("Collection date cannot be in the past.");
+    if (f.date && f.time && new Date(`${f.date}T${f.time}`).getTime() <= Date.now()) {
+      return setError("Collection date and time must be in the future.");
+    }
+    if (asksReturnDate && f.returnDate && f.returnDate <= (f.date || dateInputValue(new Date()))) {
+      return setError(f.date ? "Return date must be after the collection date." : "Return date must be in the future.");
+    }
     if (f.boxes + f.large === 0) return setError("Add at least one box or large item.");
     setBusy(true);
-    const { error } = await supabase.from("collection_requests").insert({
-      user_id: user.id,
+    const values = {
       mode,
       items_description: f.description.trim(),
       boxes: f.boxes,
       large_items: f.large,
       item_condition: mode === "sell" ? f.condition : null,
       collection_date: f.date || null,
+      collection_time: f.time || null,
+      ...(hasReturnDate && { return_date: mode === "store" ? f.returnDate || null : null }),
       location: f.location,
       estimate_pence: mode === "store" ? storeCost : null,
+    };
+    const result = editingId
+      ? await supabase.from("collection_requests").update(values).eq("id", editingId).eq("status", "requested").select("id").single()
+      : await supabase.from("collection_requests").insert({ ...values, user_id: user.id });
+    setBusy(false);
+    if (result.error) return setError(result.error.message);
+    setDone(editingId ? "Request updated." : "Request saved. We'll confirm a time before your move-out date.");
+    setEditingId(null);
+    setF(EMPTY_FORM);
+    await load();
+  }
+
+  function editRequest(request: Request) {
+    setEditingId(request.id);
+    setMode(request.mode);
+    setF({
+      description: request.items_description,
+      boxes: request.boxes,
+      large: request.large_items,
+      condition: request.item_condition ?? ITEM_STATES[0],
+      date: request.collection_date ?? "",
+      time: request.collection_time?.slice(0, 5) ?? "",
+      returnDate: request.return_date ?? "",
+      location: request.location ?? LOCATIONS[0],
     });
+    setDone("");
+    setError("");
+  }
+
+  function stopEditing() {
+    setEditingId(null);
+    setF(EMPTY_FORM);
+    setDone("");
+    setError("");
+  }
+
+  async function cancelRequest(request: Request) {
+    if (!window.confirm("Cancel this collection request?")) return;
+    setError("");
+    setBusy(true);
+    const { error } = await supabase
+      .from("collection_requests")
+      .update({ status: "cancelled" })
+      .eq("id", request.id)
+      .in("status", ["requested", "scheduled"])
+      .select("id")
+      .single();
     setBusy(false);
     if (error) return setError(error.message);
-    setDone(true);
-    setF((p) => ({ ...p, description: "" }));
-    load();
+    if (editingId === request.id) stopEditing();
+    await load();
   }
 
   return (
@@ -77,8 +188,18 @@ export default function Storage() {
       </div>
 
       <div className="split">
-        <form className="panel stack" onSubmit={submit}>
-          <h2>What would you like to do?</h2>
+        <form
+          className="panel stack"
+          onSubmit={submit}
+          style={editingId ? { border: "2px solid var(--blue)", boxShadow: "0 0 0 4px var(--blue-soft)" } : undefined}
+        >
+          <h2>{editingId ? "Edit collection request" : "What would you like to do?"}</h2>
+          {editingId && (
+            <div className="notice">
+              <Pencil size={16} />
+              <span><b>Editing an existing request.</b> Saving will update it, not create a new collection request.</span>
+            </div>
+          )}
           <div className="opt-grid">
             <button type="button" className={`opt row-opt ${mode === "sell" ? "on" : ""}`} onClick={() => setMode("sell")}>
               <span className="opt-ic"><Banknote size={18} /></span>
@@ -96,12 +217,14 @@ export default function Storage() {
           </label>
           <div className="two">
             <label className="field">
-              <span>Boxes</span>
+              <span>Boxes <span className="hint">({BOX_SIZE} each)</span></span>
               <input className="input" type="number" min={0} max={20} value={f.boxes} onChange={(e) => set("boxes", Math.max(0, Number(e.target.value) || 0))} />
+              <span className="hint">One box is {BOX_SIZE}. Good for books, kitchenware, bedding and clothes.</span>
             </label>
             <label className="field">
-              <span>Large items <span className="hint">(bike, chair, mini fridge)</span></span>
+              <span>Large items <span className="hint">(bigger than one box)</span></span>
               <input className="input" type="number" min={0} max={10} value={f.large} onChange={(e) => set("large", Math.max(0, Number(e.target.value) || 0))} />
+              <span className="hint">Anything that doesn't fit inside a {BOX_SIZE} box counts as a large item: a bike, desk chair or mini fridge, for example.</span>
             </label>
           </div>
           {mode === "sell" && (
@@ -114,10 +237,14 @@ export default function Storage() {
               </div>
             </div>
           )}
-          <div className="two">
+          <div className={asksReturnDate ? "two" : "three"}>
             <label className="field">
               <span>Collection date</span>
-              <input className="input" type="date" value={f.date} onChange={(e) => set("date", e.target.value)} />
+              <input className="input" type="date" min={minimumCollection.date} value={f.date} onChange={(e) => set("date", e.target.value)} />
+            </label>
+            <label className="field">
+              <span>Collection time</span>
+              <input className="input" type="time" min={f.date === minimumCollection.date ? minimumCollection.time : undefined} value={f.time} onChange={(e) => set("time", e.target.value)} />
             </label>
             <label className="field">
               <span>Collect from</span>
@@ -125,12 +252,24 @@ export default function Storage() {
                 {LOCATIONS.map((l) => <option key={l}>{l}</option>)}
               </select>
             </label>
+            {asksReturnDate && (
+              <label className="field">
+                <span>Return date</span>
+                <input className="input" type="date" min={minimumReturn} value={f.returnDate} onChange={(e) => set("returnDate", e.target.value)} />
+                <span className="hint">When we bring your things back. Leave it empty if you don't know yet.</span>
+              </label>
+            )}
           </div>
           <button className="btn btn-primary btn-lg" type="submit" disabled={busy}>
-            <Truck size={18} /> {busy ? "Booking…" : "Request collection"}
+            <Truck size={18} /> {busy ? "Saving…" : editingId ? "Save changes" : "Request collection"}
           </button>
+          {editingId && (
+            <button className="btn btn-ghost" type="button" onClick={stopEditing} disabled={busy}>
+              <X size={16} /> Stop editing
+            </button>
+          )}
           {error && <p className="error">{error}</p>}
-          {done && <div className="notice green"><CircleCheck size={16} /><span>Request sent. We'll confirm a time before your move-out date.</span></div>}
+          {done && <div className="notice green"><CircleCheck size={16} /><span>{done}</span></div>}
         </form>
 
         <aside className="sticky stack">
@@ -162,17 +301,40 @@ export default function Storage() {
           {requests.length > 0 && (
             <section className="panel stack">
               <h3>Your requests</h3>
+              <p className="muted small">You can edit requests before they’re scheduled. Requested and scheduled collections can be cancelled.</p>
               {requests.map((r) => (
-                <div key={r.id} className="row" style={{ alignItems: "flex-start" }}>
+                <div
+                  key={r.id}
+                  className="row"
+                  style={{
+                    alignItems: "flex-start",
+                    ...(editingId === r.id ? { padding: 12, borderRadius: 12, background: "var(--blue-soft)", outline: "1px solid #bfd0ff" } : {}),
+                  }}
+                >
                   <span className="opt-ic" style={{ width: 34, height: 34, borderRadius: 10, background: "var(--bg)", display: "grid", placeItems: "center", flex: "none" }}>
                     {r.mode === "sell" ? <Banknote size={16} /> : <Package size={16} />}
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <b>{r.mode === "sell" ? "Sell to partner" : "Summer storage"}</b>
                     <p className="muted small truncate">{r.items_description}</p>
-                    <p className="muted small"><CalendarDays size={12} style={{ verticalAlign: -1 }} /> {r.collection_date ?? "Date to confirm"} · {r.location}</p>
+                    <p className="muted small"><CalendarDays size={12} style={{ verticalAlign: -1 }} /> {r.collection_date ?? "Date to confirm"} · {r.collection_time?.slice(0, 5) ?? "Time to confirm"} · {r.location}</p>
+                    {hasReturnDate && r.mode === "store" && (
+                      <p className="muted small"><PackageCheck size={12} style={{ verticalAlign: -1 }} /> Return: {r.return_date ?? "date to confirm"}</p>
+                    )}
                   </div>
                   <span className="badge amber">{r.status}</span>
+                  <div className="stack" style={{ gap: 6 }}>
+                    {r.status === "requested" && (
+                      <button className="btn btn-ghost" type="button" onClick={() => editRequest(r)} disabled={busy || editingId === r.id}>
+                        <Pencil size={14} /> {editingId === r.id ? "Editing" : "Edit"}
+                      </button>
+                    )}
+                    {(r.status === "requested" || r.status === "scheduled") && (
+                      <button className="btn btn-danger" type="button" onClick={() => cancelRequest(r)} disabled={busy}>
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </section>

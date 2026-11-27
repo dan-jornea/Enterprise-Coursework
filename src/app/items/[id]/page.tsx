@@ -7,11 +7,18 @@ import {
 } from "lucide-react";
 import Avatar from "@/components/Avatar";
 import ItemImage from "@/components/ItemImage";
-import { SAFE_SPOTS, TIME_WINDOWS, UNIVERSITY, categoryLabel, conditionLabel, nextDays, windowLabel } from "@/lib/config";
+import { RatingSummary } from "@/components/Rating";
+import { SAFE_SPOTS, TIME_WINDOWS, UNIVERSITY, categoryLabel, conditionLabel } from "@/lib/config";
+import { reputationOf, useReputations } from "@/lib/reputation";
 import { ITEM_SELECT, pounds, savePct, supabase, timeAgo, toPence, type Item } from "@/lib/supabase";
 import { useAuth } from "@/lib/useAuth";
 
 const REPORT_REASONS = ["Looks like a scam", "Not as described", "Prohibited or unsafe item", "Offensive content", "Other"];
+
+function dateInputValue(date: Date) {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 10);
+}
 
 export default function ItemPage() {
   const { id } = useParams<{ id: string }>();
@@ -27,6 +34,8 @@ export default function ItemPage() {
       .then(({ data }) => setMine((data as Item[]) ?? []));
   }, [id, user]);
 
+  const reputations = useReputations([item?.owner_id]);
+
   if (item === undefined) return null;
   if (item === null)
     return (
@@ -39,6 +48,7 @@ export default function ItemPage() {
 
   const isOwner = item.owner_id === user?.id;
   const save = savePct(item);
+  const pickupWindow = TIME_WINDOWS.find((window) => window.id === item.pickup_window);
 
   return (
     <>
@@ -71,9 +81,10 @@ export default function ItemPage() {
                 </h3>
                 <p className="muted small">
                   {[item.seller?.year, item.seller?.course].filter(Boolean).join(" · ") || UNIVERSITY.name}
+                  {" · "}Listed {timeAgo(item.created_at)}
                 </p>
               </div>
-              <span className="muted small">Listed {timeAgo(item.created_at)}</span>
+              <RatingSummary reputation={reputationOf(reputations, item.owner_id)} />
             </div>
           </section>
         </div>
@@ -88,12 +99,22 @@ export default function ItemPage() {
             <h1 className="detail-title">{item.title}</h1>
             <div className="facts">
               <div className="fact"><MapPin size={16} /><div><b>{item.location ?? "On campus"}</b>Pickup location</div></div>
-              <div className="fact"><Clock size={16} /><div><b>{windowLabel(item.pickup_window) || "Ask the seller"}</b>Best hand-over time</div></div>
+              <div className="fact">
+                <Clock size={16} />
+                <div>
+                  <b>{pickupWindow?.label ?? "Ask the seller"}</b>
+                  {pickupWindow && <span style={{ display: "block" }}>{pickupWindow.time}</span>}
+                  <span style={{ display: "block" }}>Pickup time</span>
+                </div>
+              </div>
             </div>
           </section>
 
           {isOwner ? (
-            <div className="panel notice"><CircleCheck size={16} /><span>This is your listing. Offers appear on your <Link href="/offers">Offers</Link> page.</span></div>
+            <div className="panel stack">
+              <div className="notice"><CircleCheck size={16} /><span>This is your listing. Offers appear on your <Link href="/offers">Offers</Link> page.</span></div>
+              <Link href="/me" className="btn btn-ghost btn-block">Go to my listings to edit</Link>
+            </div>
           ) : item.status !== "available" ? (
             <div className="panel notice amber"><Clock size={16} /><span>This item has already been traded.</span></div>
           ) : (
@@ -114,30 +135,74 @@ function OfferPanel({ item, mine, userId }: { item: Item; mine: Item[]; userId: 
   const [offeredId, setOfferedId] = useState("");
   const [cash, setCash] = useState("");
   const [spot, setSpot] = useState(SAFE_SPOTS[0].id);
-  const [days, setDays] = useState<string[]>([]);
   const [day, setDay] = useState("");
-  const [win, setWin] = useState(item.pickup_window ?? TIME_WINDOWS[0].id);
+  const [time, setTime] = useState("");
+  const [minDay, setMinDay] = useState("");
+  const [currentTime, setCurrentTime] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
+  const [hasPendingOffer, setHasPendingOffer] = useState<boolean | null>(null);
+  const [checkingOffer, setCheckingOffer] = useState(true);
+  const [offerCheckError, setOfferCheckError] = useState("");
 
   useEffect(() => {
-    const d = nextDays(5);
-    setDays(d);
-    setDay(d[1]);
+    function updateClock() {
+      const now = new Date();
+      setMinDay(dateInputValue(now));
+      setCurrentTime(`${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`);
+    }
+
+    updateClock();
+    const timer = window.setInterval(updateClock, 30_000);
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setDay(dateInputValue(tomorrow));
+    setTime("14:00");
+    return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    setCheckingOffer(true);
+    setOfferCheckError("");
+    supabase
+      .from("trade_offers")
+      .select("id")
+      .eq("wanted_item_id", item.id)
+      .eq("offerer_id", userId)
+      .eq("status", "pending")
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) {
+          setOfferCheckError(error.message);
+          setHasPendingOffer(null);
+        } else {
+          setHasPendingOffer(data !== null);
+        }
+        setCheckingOffer(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [item.id, userId]);
+
   const offered = mine.find((m) => m.id === offeredId);
-  const cashPence = mode === "buy" ? item.price_pence ?? 0 : toPence(cash);
+  const cashPence = toPence(cash);
+  const minimumOfferPence = item.price_pence == null ? 0 : Math.ceil(item.price_pence / 2);
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (mode === "buy" && cashPence < minimumOfferPence) {
+      return setError(`Your offer must be at least ${pounds(minimumOfferPence)} (50% of the seller's price).`);
+    }
     if (mode === "swap" && !offeredId && cashPence === 0) return setError("Choose one of your items, add cash, or both.");
+    if (!day || !time || new Date(`${day}T${time}`) < new Date()) return setError("Choose a day and time that is not in the past.");
     setBusy(true);
     const spotName = SAFE_SPOTS.find((s) => s.id === spot)?.name ?? null;
-    const w = TIME_WINDOWS.find((t) => t.id === win);
     const { error } = await supabase.from("trade_offers").insert({
       wanted_item_id: item.id,
       offered_item_id: mode === "swap" ? offeredId || null : null,
@@ -145,12 +210,32 @@ function OfferPanel({ item, mine, userId }: { item: Item; mine: Item[]; userId: 
       cash_pence: cashPence,
       message: message.trim() || null,
       meetup_spot: spotName,
-      meetup_when: day && w ? `${day} · ${w.label} (${w.time})` : null,
+      meetup_when: day && time
+        ? `${new Date(`${day}T12:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" })} · ${time}`
+        : null,
     });
     setBusy(false);
+    if (error?.code === "23505") {
+      setHasPendingOffer(true);
+      return;
+    }
     if (error) return setError(error.message);
     setSent(true);
   }
+
+  if (checkingOffer)
+    return <div className="panel notice"><Clock size={16} /><span>Checking for an existing offer…</span></div>;
+
+  if (offerCheckError)
+    return <div className="panel notice amber" role="alert"><Clock size={16} /><span>Could not check for an existing offer. Refresh the page to try again. {offerCheckError}</span></div>;
+
+  if (hasPendingOffer)
+    return (
+      <div className="panel stack">
+        <div className="notice amber"><Clock size={16} /><span>You already have a pending offer for this item. Wait for the seller’s response before sending another.</span></div>
+        <Link href="/offers" className="btn btn-ghost btn-block">View your offers</Link>
+      </div>
+    );
 
   if (sent)
     return (
@@ -168,7 +253,7 @@ function OfferPanel({ item, mine, userId }: { item: Item; mine: Item[]; userId: 
           <ArrowLeftRight size={15} /> Swap
         </button>
         <button type="button" className={mode === "buy" ? "on" : ""} disabled={!canBuy} onClick={() => setMode("buy")}>
-          <PoundSterling size={15} /> Buy {canBuy ? pounds(item.price_pence!) : ""}
+          <PoundSterling size={15} /> Buy
         </button>
       </div>
 
@@ -192,6 +277,25 @@ function OfferPanel({ item, mine, userId }: { item: Item; mine: Item[]; userId: 
           </>
         )}
 
+        {mode === "buy" && (
+          <label className="field">
+            <span>Your cash offer <span className="hint">(minimum {pounds(minimumOfferPence)})</span></span>
+            <div className="input-prefix">
+              <b>£</b>
+              <input
+                className="input"
+                type="number"
+                min={minimumOfferPence / 100}
+                step="0.01"
+                value={cash}
+                onChange={(e) => setCash(e.target.value)}
+                placeholder={item.price_pence != null ? (item.price_pence / 100).toFixed(2) : undefined}
+                required
+              />
+            </div>
+          </label>
+        )}
+
         <div className="field">
           <span className="field-label"><ShieldCheck size={14} style={{ verticalAlign: -2, color: "var(--blue)" }} /> Safe exchange spot</span>
           <div className="stack" style={{ gap: 8 }}>
@@ -206,17 +310,15 @@ function OfferPanel({ item, mine, userId }: { item: Item; mine: Item[]; userId: 
 
         <div className="field">
           <span className="field-label"><CalendarDays size={14} style={{ verticalAlign: -2, color: "var(--blue)" }} /> Propose a day and time</span>
-          <div className="chips">
-            {days.map((d) => (
-              <button type="button" key={d} className={`chip ${day === d ? "on" : ""}`} onClick={() => setDay(d)}>{d}</button>
-            ))}
-          </div>
-          <div className="chips" style={{ marginTop: 4 }}>
-            {TIME_WINDOWS.map((w) => (
-              <button type="button" key={w.id} className={`chip soft ${win === w.id ? "on" : ""}`} onClick={() => setWin(w.id)}>
-                {w.label} · {w.time}
-              </button>
-            ))}
+          <div className="two">
+            <label className="field">
+              <span>Day</span>
+              <input className="input" type="date" min={minDay} value={day} onChange={(e) => setDay(e.target.value)} required />
+            </label>
+            <label className="field">
+              <span>Time</span>
+              <input className="input" type="time" min={day === minDay ? currentTime : undefined} value={time} onChange={(e) => setTime(e.target.value)} required />
+            </label>
           </div>
         </div>
 
@@ -258,7 +360,7 @@ function ReportPanel({ itemId, userId }: { itemId: string; userId: string }) {
   if (done) return <div className="notice green"><CircleCheck size={16} /><span>Thanks. The team will review this listing.</span></div>;
   if (!open)
     return (
-      <button className="link-btn" style={{ alignSelf: "center" }} onClick={() => setOpen(true)}>
+      <button className="btn btn-report" style={{ alignSelf: "center" }} onClick={() => setOpen(true)}>
         <Flag size={14} /> Report this listing
       </button>
     );
@@ -272,7 +374,7 @@ function ReportPanel({ itemId, userId }: { itemId: string; userId: string }) {
       </div>
       <textarea className="input" rows={3} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="What looks wrong? (optional)" />
       <div className="row">
-        <button className="btn btn-danger" type="submit">Send report</button>
+        <button className="btn btn-report" type="submit">Send report</button>
         <button className="btn btn-ghost" type="button" onClick={() => setOpen(false)}>Cancel</button>
       </div>
       {error && <p className="error">{error}</p>}

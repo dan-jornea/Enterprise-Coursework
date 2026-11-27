@@ -71,15 +71,23 @@ create table if not exists collection_requests (
   large_items int not null default 0 check (large_items >= 0),
   item_condition text,
   collection_date date,
+  collection_time time,
   location text,
   estimate_pence int,
   status text not null default 'requested' check (status in ('requested','scheduled','collected','cancelled')),
   created_at timestamptz not null default now()
 );
+alter table collection_requests add column if not exists collection_time time;
+notify pgrst, 'reload schema';
 alter table collection_requests enable row level security;
 drop policy if exists "own requests" on collection_requests;
 create policy "own requests" on collection_requests for all to authenticated
   using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- A buyer can have only one pending offer per item at a time.
+create unique index if not exists trade_offers_one_pending_per_buyer_item
+  on trade_offers (wanted_item_id, offerer_id)
+  where status = 'pending';
 
 -- 6. Photo storage. Students upload into a folder named after their user id.
 insert into storage.buckets (id, name, public)

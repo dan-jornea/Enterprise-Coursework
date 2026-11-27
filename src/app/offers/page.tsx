@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeftRight, CalendarDays, MapPin, MessageSquare } from "lucide-react";
 import ItemImage from "@/components/ItemImage";
+import { RatingChip } from "@/components/Rating";
+import { reputationOf, useReputations } from "@/lib/reputation";
 import { pounds, supabase, timeAgo } from "@/lib/supabase";
 import { useAuth } from "@/lib/useAuth";
 
@@ -26,7 +28,7 @@ const STATUS: Record<Offer["status"], string> = { pending: "amber", accepted: "g
 export default function Offers() {
   const { user } = useAuth(true);
   const [offers, setOffers] = useState<Offer[] | null>(null);
-  const [tab, setTab] = useState<"in" | "out">("in");
+  const [tab, setTab] = useState<"in" | "out" | "withdrawn">("in");
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -57,9 +59,12 @@ export default function Offers() {
     load();
   }
 
-  const incoming = (offers ?? []).filter((o) => o.wanted?.owner_id === user?.id);
-  const outgoing = (offers ?? []).filter((o) => o.offerer_id === user?.id);
-  const list = tab === "in" ? incoming : outgoing;
+  const withdrawn = (offers ?? []).filter((o) => o.status === "withdrawn");
+  const incoming = (offers ?? []).filter((o) => o.wanted?.owner_id === user?.id && o.status !== "withdrawn");
+  const outgoing = (offers ?? []).filter((o) => o.offerer_id === user?.id && o.status !== "withdrawn");
+  const list = tab === "in" ? incoming : tab === "out" ? outgoing : withdrawn;
+  // Reloaded together with the offers, because accepting one changes both students' ratings.
+  const reputations = useReputations((offers ?? []).map((o) => o.offerer_id), offers);
 
   return (
     <>
@@ -69,61 +74,72 @@ export default function Offers() {
           <p>Swaps and buy requests for your items, and the offers you've made.</p>
         </div>
       </div>
-      <div className="tabs" style={{ maxWidth: 420 }}>
+      <div className="tabs" style={{ maxWidth: 620, gridTemplateColumns: "repeat(3, 1fr)" }}>
         <button className={tab === "in" ? "on" : ""} onClick={() => setTab("in")}>Received ({incoming.length})</button>
         <button className={tab === "out" ? "on" : ""} onClick={() => setTab("out")}>Sent ({outgoing.length})</button>
+        <button className={tab === "withdrawn" ? "on" : ""} onClick={() => setTab("withdrawn")}>Withdrawn ({withdrawn.length})</button>
       </div>
       {error && <p className="error" style={{ marginBottom: 12 }}>{error}</p>}
 
       {offers && list.length === 0 && (
         <div className="panel empty">
-          <h3>No offers yet</h3>
-          <p>{tab === "in" ? "When someone offers on your listings, it shows up here." : "Find something you like and make an offer."}</p>
-          <p style={{ marginTop: 16 }}><Link href="/" className="btn btn-ghost">Explore listings</Link></p>
+          <h3>{tab === "withdrawn" ? "No withdrawn offers" : "No offers yet"}</h3>
+          <p>{tab === "in" ? "When someone offers on your listings, it shows up here." : tab === "out" ? "Find something you like and make an offer." : "Withdrawn offers will show up here."}</p>
+          {tab !== "withdrawn" && <p style={{ marginTop: 16 }}><Link href="/" className="btn btn-ghost">Explore listings</Link></p>}
         </div>
       )}
 
       <div className="list">
-        {list.map((o) => (
-          <div key={o.id} className="panel offer">
-            {o.offered ? (
-              <div className="mini"><ItemImage category={o.offered.category} photoUrl={o.offered.photo_url} alt={o.offered.title} iconSize={28} /></div>
-            ) : (
-              <div className="mini cash">{pounds(o.cash_pence)}</div>
-            )}
-            <ArrowLeftRight className="swap-ic" size={22} />
-            <Link href={`/items/${o.wanted?.id}`} className="mini">
-              {o.wanted && <ItemImage category={o.wanted.category} photoUrl={o.wanted.photo_url} alt={o.wanted.title} iconSize={28} />}
-            </Link>
-            <div style={{ minWidth: 0 }}>
-              <h3>
-                {[o.offered?.title, o.cash_pence ? `${pounds(o.cash_pence)} cash` : null].filter(Boolean).join(" + ")}
-                <span className="muted" style={{ fontWeight: 500 }}> for </span>
-                {tab === "in" ? "your " : ""}{o.wanted?.title}
-              </h3>
-              <span className={`badge ${STATUS[o.status]}`}>{o.status}</span>
-              <span className="muted small" style={{ marginLeft: 8 }}>
-                {tab === "in" ? `From ${o.offerer?.display_name ?? "a student"} · ` : ""}{timeAgo(o.created_at)}
-              </span>
-              <div className="meta-list">
-                {o.meetup_spot && <span><MapPin size={13} /> {o.meetup_spot}</span>}
-                {o.meetup_when && <span><CalendarDays size={13} /> {o.meetup_when}</span>}
-                {o.message && <span><MessageSquare size={13} /> “{o.message}”</span>}
+        {list.map((o) => {
+          const isReceived = o.wanted?.owner_id === user?.id;
+          return (
+            <div key={o.id} className="panel offer">
+              {o.offered ? (
+                <div className="mini"><ItemImage category={o.offered.category} photoUrl={o.offered.photo_url} alt={o.offered.title} iconSize={28} /></div>
+              ) : (
+                <div className="mini cash">{pounds(o.cash_pence)}</div>
+              )}
+              <ArrowLeftRight className="swap-ic" size={22} />
+              <Link href={`/items/${o.wanted?.id}`} className="mini">
+                {o.wanted && <ItemImage category={o.wanted.category} photoUrl={o.wanted.photo_url} alt={o.wanted.title} iconSize={28} />}
+              </Link>
+              <div style={{ minWidth: 0 }}>
+                <h3>
+                  {[o.offered?.title, o.cash_pence ? `${pounds(o.cash_pence)} cash` : null].filter(Boolean).join(" + ")}
+                  <span className="muted" style={{ fontWeight: 500 }}> for </span>
+                  {isReceived ? "your " : ""}{o.wanted?.title}
+                </h3>
+                <span className={`badge ${STATUS[o.status]}`}>{o.status}</span>
+                <span className="muted small" style={{ marginLeft: 8 }}>
+                  {isReceived && (
+                    <>
+                      From {o.offerer?.display_name ?? "a student"}{" "}
+                      <RatingChip reputation={reputationOf(reputations, o.offerer_id)} />
+                      {" · "}
+                    </>
+                  )}
+                  {timeAgo(o.created_at)}
+                </span>
+                <div className="meta-list">
+                  {o.meetup_spot && <span><MapPin size={13} /> {o.meetup_spot}</span>}
+                  {o.meetup_when && <span><CalendarDays size={13} /> {o.meetup_when}</span>}
+                  {o.message && <span><MessageSquare size={13} /> “{o.message}”</span>}
+                </div>
+              </div>
+              <div className="row">
+                {o.status === "pending" && tab === "in" && isReceived && (
+                  <>
+                    <button className="btn btn-primary" onClick={() => respond(o.id, "accept")}>Accept</button>
+                    <button className="btn btn-ghost" onClick={() => respond(o.id, "decline")}>Decline</button>
+                  </>
+                )}
+                {o.status === "pending" && tab === "out" && !isReceived && (
+                  <button className="btn btn-ghost" onClick={() => respond(o.id, "withdraw")}>Withdraw</button>
+                )}
               </div>
             </div>
-            <div className="row">
-              {o.status === "pending" && tab === "in" && (
-                <>
-                  <button className="btn btn-primary" onClick={() => respond(o.id, "accept")}>Accept</button>
-                  <button className="btn btn-ghost" onClick={() => respond(o.id, "decline")}>Decline</button>
-                </>
-              )}
-              {o.status === "pending" && tab === "out" && (
-                <button className="btn btn-ghost" onClick={() => respond(o.id, "withdraw")}>Withdraw</button>
-              )}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </>
   );

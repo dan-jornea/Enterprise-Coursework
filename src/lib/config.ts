@@ -46,8 +46,9 @@ export const SAFE_SPOTS = [
 ];
 
 export const TIME_WINDOWS = [
-  { id: "afternoon", label: "Afternoon", time: "14:00 – 17:00" },
-  { id: "evening", label: "Evening", time: "17:00 – 20:00" },
+  { id: "morning", label: "Morning", time: "09:00 – 12:00" },
+  { id: "afternoon", label: "Afternoon", time: "12:00 – 18:00" },
+  { id: "evening", label: "Evening", time: "18:00 – 21:00" },
   { id: "flexible", label: "Flexible", time: "Between lectures" },
 ];
 export const windowLabel = (id: string | null) => {
@@ -63,6 +64,10 @@ export const COLLECTION_PRICING = {
   storePerBoxPence: 1200,
   storePerLargeItemPence: 2500,
 };
+
+// The standard box used for collections. PLACEHOLDER size for the demo.
+// Anything that doesn't fit inside one counts as a large item.
+export const STORAGE_BOX = { widthCm: 46, depthCm: 46, heightCm: 46 };
 
 export function nextDays(n: number) {
   const out: string[] = [];

@@ -10,7 +10,7 @@ import Avatar from "./Avatar";
 const LINKS = [
   { href: "/", label: "Explore" },
   { href: "/offers", label: "Offers" },
-  { href: "/storage", label: "Storage & collection" },
+  { href: "/storage", label: "Storage & Trade-In" },
   { href: "/me", label: "My listings" },
 ];
 
@@ -53,7 +53,7 @@ export default function NavBar() {
               <Link href="/items/new" className="btn btn-primary">
                 <Plus size={16} /> Sell or swap
               </Link>
-              <Link href="/me" className="nav-user" title={user.email ?? ""}>
+              <Link href="/account" className="nav-user" title={user.email ?? ""}>
                 <Avatar name={profile?.display_name ?? user.email} size={34} />
               </Link>
               <button className="icon-btn" onClick={signOut} title="Sign out" aria-label="Sign out">

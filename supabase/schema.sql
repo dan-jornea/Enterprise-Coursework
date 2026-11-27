@@ -75,6 +75,26 @@ create table trade_offers (
   status text not null default 'pending' check (status in ('pending','accepted','declined','withdrawn')),
   created_at timestamptz not null default now()
 );
+create unique index trade_offers_one_pending_per_buyer_item
+  on trade_offers (wanted_item_id, offerer_id)
+  where status = 'pending';
+
+-- End-of-year collection and storage requests.
+create table if not exists collection_requests (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  mode text not null check (mode in ('sell','store')),
+  items_description text not null,
+  boxes int not null default 0 check (boxes >= 0),
+  large_items int not null default 0 check (large_items >= 0),
+  item_condition text,
+  collection_date date,
+  collection_time time,
+  location text,
+  estimate_pence int,
+  status text not null default 'requested' check (status in ('requested','scheduled','collected','cancelled')),
+  created_at timestamptz not null default now()
+);
 
 -- 5. Row level security: students only see their own university's items.
 alter table profiles enable row level security;

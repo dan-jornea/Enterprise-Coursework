@@ -71,9 +71,70 @@ const rows = ITEMS.map(([s, title, category, condition, price, orig, swap, locat
   // Stagger the listing times so "newest first" looks natural.
   created_at: new Date(Date.now() - i * 47 * 60000).toISOString(),
 }));
-const { error } = await admin.from("items").insert(rows);
+const { data: listings, error } = await admin.from("items").insert(rows).select("id, title");
 if (error) {
   console.error("Inserting items failed:", error.message);
   process.exit(1);
 }
 console.log(`Inserted ${rows.length} demo listings.`);
+
+// Past trades and one report, so the demo sellers have ratings to show. The database works the
+// ratings out itself (supabase/004_ratings.sql); this only supplies the history behind them.
+// [seller index, seller index, trades between them]: Maya ends up with 18, Tom 12, Kai 8, Alex 4.
+const PAST_TRADES = [[0, 4, 9], [0, 1, 6], [0, 2, 3], [4, 1, 2], [4, 2, 1]];
+const PAST_TITLES = ["Desk fan", "Kettle", "Laundry basket", "Bedside lamp", "Monitor stand", "Bike lights", "Toaster", "Bookshelf", "Clothes rail", "Yoga mat"];
+
+// Start the demo sellers' history from empty, so running this again doesn't count trades twice.
+const cleared = await admin.from("reputation_events").delete().in("user_id", ids);
+if (cleared.error) {
+  console.log("Skipped the demo ratings: run supabase/004_ratings.sql first, then run this again.");
+} else {
+  await admin.from("user_reputation").delete().in("user_id", ids);
+
+  // Take turns at being the seller. Each entry is [seller, buyer].
+  const trades = [];
+  for (const [a, b, count] of PAST_TRADES) {
+    for (let k = 0; k < count; k++) trades.push(k % 2 === 0 ? [a, b] : [b, a]);
+  }
+  const price = (i) => 500 + (i % 6) * 300;
+  const when = (i) => new Date(Date.now() - (i + 2) * 24 * 3600000).toISOString();
+
+  const sold = await admin
+    .from("items")
+    .insert(trades.map(([seller], i) => ({
+      owner_id: ids[seller],
+      title: PAST_TITLES[i % PAST_TITLES.length],
+      category: "other",
+      condition: "good",
+      price_pence: price(i),
+      status: "traded",
+      created_at: when(i),
+    })))
+    .select("id");
+  const accepted = sold.error
+    ? sold
+    : await admin.from("trade_offers").insert(trades.map(([, buyer], i) => ({
+        wanted_item_id: sold.data[i].id,
+        offerer_id: ids[buyer],
+        cash_pence: price(i),
+        status: "accepted",
+        created_at: when(i),
+      })));
+
+  // One report against Alex's listing, from Kai, so the demo includes a rating that has gone down.
+  const reported = listings.find((l) => l.title === "Organic chemistry course pack");
+  const report = accepted.error
+    ? accepted
+    : await admin.from("reports").insert({
+        item_id: reported.id,
+        reporter_id: ids[1],
+        reason: "Not as described",
+        details: "Demo report: shows how a report lowers a rating.",
+      });
+
+  if (report.error) {
+    console.error("Adding the demo ratings failed:", report.error.message);
+    process.exit(1);
+  }
+  console.log(`Added ${trades.length} past trades and 1 report for the demo ratings.`);
+}
